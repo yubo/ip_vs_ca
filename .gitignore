@@ -8,3 +8,10 @@
 *.mod.c
 *.d
 *.ko
+G*
+*.sh
+toa/
+linux/
+*.py
+*.pyc
+
