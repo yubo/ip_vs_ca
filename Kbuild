@@ -1,2 +1,2 @@
-stoa-objs := stoa_core.o stoa_conn.o stoa_ctl.o stoa_proto.o utils.o
-obj-m += stoa.o
+ip_vs_ca-objs := ca_core.o ca_conn.o ca_ctl.o ca_proto.o utils.o
+obj-m += ip_vs_ca.o

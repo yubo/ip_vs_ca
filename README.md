@@ -1,5 +1,6 @@
-# STOA
+# IPVS CA
 ===
+get ip vs(fullnat) client addr 
 
 由taobao/toa修改，可作为独立模块编译安装
 
@@ -10,7 +11,7 @@ make
 ## run
 ```shell
 #install
-insmod ./stoa.ko
+insmod ./ip_vs_ca.ko
 #remove
-rmmod stoa
+rmmod ip_vs_ca
 ```

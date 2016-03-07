@@ -1,5 +1,5 @@
 /*
- * stoa_core.c
+ * ca_core.c
  * Copyright (C) 2016 yubo@yubo.org
  * 2016-02-14
  */
@@ -10,21 +10,23 @@
 #include <linux/delay.h>
 #include <linux/file.h>
 #include <asm/paravirt.h>
-#include "stoa.h"
+#include "ca.h"
 
 unsigned long **sys_call_table;
 unsigned long original_cr0;
+struct syscall_links sys;
 
-asmlinkage int (*_getpeername) (int, struct sockaddr *, int *);
-asmlinkage int (*_accept4) (int, struct sockaddr *, int *, int);
+//asmlinkage int (*_getpeername) (int, struct sockaddr *, int *);
+//asmlinkage int (*_accept4) (int, struct sockaddr *, int *, int);
+// recvmsg recvfrom
 
-static int stoa_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
+static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 {
 	int err, len;
 	struct socket *sock;
 	struct sockaddr_in sin;
 	union nf_inet_addr addr;
-	struct stoa_conn *cp;
+	struct ip_vs_ca_conn *cp;
 
 	err = get_user(len, ulen);
 	if (err)
@@ -45,16 +47,16 @@ static int stoa_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 	if (!sock)
 		return 5;
 
-	STOA_DBG("%s called, sin{.family:%d, .port:%d, addr:%pI4} sock.type:%d\n",
+	IP_VS_CA_DBG("%s called, sin{.family:%d, .port:%d, addr:%pI4} sock.type:%d\n",
 			__func__, sin.sin_family, ntohs(sin.sin_port),
 			&sin.sin_addr.s_addr, sock->type);
 
 	addr.ip = sin.sin_addr.s_addr;
 
 	if (sock->type == SOCK_STREAM){
-		cp = stoa_conn_get(sin.sin_family, IPPROTO_TCP, &addr, sin.sin_port);
+		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_TCP, &addr, sin.sin_port);
 	}else if(sock->type == SOCK_DGRAM){
-		cp = stoa_conn_get(sin.sin_family, IPPROTO_UDP, &addr, sin.sin_port);
+		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_UDP, &addr, sin.sin_port);
 	}else{
 		return 6;
 	}
@@ -62,14 +64,14 @@ static int stoa_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 	if (!cp)
 		return 7;
 
-	STOA_DBG("%s called, %d %pI4:%d(%pI4:%d)->%pI4:%d\n",
+	IP_VS_CA_DBG("%s called, %d %pI4:%d(%pI4:%d)->%pI4:%d\n",
 			__func__, cp->protocol,
 			&sin.sin_addr.s_addr, ntohs(sin.sin_port),
 			&cp->o_addr.ip, ntohs(cp->o_port),
 			&cp->d_addr.ip, ntohs(cp->d_port));
 	sin.sin_addr.s_addr = cp->o_addr.ip;
 	sin.sin_port = cp->o_port;
-	stoa_conn_put(cp);
+	ip_vs_ca_conn_put(cp);
 	if(copy_to_user(uaddr, &sin, len))
 		return 8;
 	
@@ -79,43 +81,43 @@ static int stoa_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 /*
  * ./net/socket.c:1624
  */
-asmlinkage int stoa_getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
+asmlinkage static int
+getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 {
-	int ret, err, len;
-	struct sockaddr_in sin;
+	int ret, err;
 
-	STOA_DBG("getpeername called\n");
+	IP_VS_CA_DBG("getpeername called\n");
 
-	ret =  _getpeername(fd, usockaddr, usockaddr_len);
+	ret =  sys.getpeername(fd, usockaddr, usockaddr_len);
 	if (ret < 0)
 		return ret;
 
-	err = stoa_modify_uaddr(fd, usockaddr, usockaddr_len);
+	err = ip_vs_ca_modify_uaddr(fd, usockaddr, usockaddr_len);
 	if (err)
-		STOA_DBG("stoa_modify_uaddr return:%d\n", err);
+		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr return:%d\n", err);
 
 	return ret;
 }
 
-asmlinkage int
-toa_accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
+asmlinkage static int
+accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 {
-	int ret, err, len;
+	int ret, err;
 
-	STOA_DBG("accept4 called\n");
+	IP_VS_CA_DBG("accept4 called\n");
 
-	ret = _accept4(fd, upeer_sockaddr, upeer_addrlen, flags);
+	ret = sys.accept4(fd, upeer_sockaddr, upeer_addrlen, flags);
 	if (ret < 0)
 		return ret;
 
-	err = stoa_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen);
+	err = ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen);
 	if (err)
-		STOA_DBG("stoa_modify_uaddr err:%d\n", err);
+		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", err);
 
 	return ret;
 }
 
-const char *stoa_proto_name(unsigned proto)
+const char *ip_vs_ca_proto_name(unsigned proto)
 {
 	static char buf[20];
 
@@ -138,47 +140,47 @@ const char *stoa_proto_name(unsigned proto)
 	}
 }
 
-static int stoa_syscall_init(void)
+static int ip_vs_ca_syscall_init(void)
 {
 	if (!(sys_call_table = find_sys_call_table())){
-		STOA_ERR("get sys call table failed.\n");
+		IP_VS_CA_ERR("get sys call table failed.\n");
 		return -1;
 	}
 
 	original_cr0 = read_cr0();
 	write_cr0(original_cr0 & ~0x00010000);
-	STOA_DBG("Loading stoa module, sys call table at %p\n", sys_call_table);
-	_getpeername = (void *)(sys_call_table[__NR_getpeername]);
-	_accept4 = (void *)(sys_call_table[__NR_accept4]);
-	sys_call_table[__NR_getpeername] = (void *)toa_getpeername;
-	sys_call_table[__NR_accept4] = (void *)toa_accept4;
+	IP_VS_CA_DBG("Loading ip_vs_ca module, sys call table at %p\n", sys_call_table);
+	sys.getpeername = (void *)(sys_call_table[__NR_getpeername]);
+	sys.accept4 = (void *)(sys_call_table[__NR_accept4]);
+	sys_call_table[__NR_getpeername] = (void *)getpeername;
+	sys_call_table[__NR_accept4] = (void *)accept4;
 	write_cr0(original_cr0);
 
 	return 0;
 }
 
-static void stoa_syscall_cleanup(void)
+static void ip_vs_ca_syscall_cleanup(void)
 {	
 	if (!sys_call_table){
 		return;
 	}
 
 	write_cr0(original_cr0 & ~0x00010000);
-	sys_call_table[__NR_getpeername] = (void *)_getpeername;
-	sys_call_table[__NR_accept4] = (void *)_accept4;
+	sys_call_table[__NR_getpeername] = (void *)sys.getpeername;
+	sys_call_table[__NR_accept4] = (void *)sys.accept4;
 	write_cr0(original_cr0);
 	//msleep(100);
 	sys_call_table = NULL;
 }
 
 static unsigned int
-stoa_in_hook(unsigned int hooknum, struct sk_buff *skb,
+ip_vs_ca_in_hook(unsigned int hooknum, struct sk_buff *skb,
 		const struct net_device *in, const struct net_device *out,
 		int (*okfn) (struct sk_buff *))
 {
-	struct stoa_iphdr iph;
-	struct stoa_conn *cp;
-	struct stoa_protocol *pp;
+	struct ip_vs_ca_iphdr iph;
+	struct ip_vs_ca_conn *cp;
+	struct ip_vs_ca_protocol *pp;
 	int af;
 
 	//EnterFunction();
@@ -189,7 +191,7 @@ stoa_in_hook(unsigned int hooknum, struct sk_buff *skb,
 		goto out;
 	}
 
-	stoa_fill_iphdr(af, skb_network_header(skb), &iph);
+	ip_vs_ca_fill_iphdr(af, skb_network_header(skb), &iph);
 
 
 	/*
@@ -197,7 +199,7 @@ stoa_in_hook(unsigned int hooknum, struct sk_buff *skb,
 	 *      Don't handle local packets on IPv6 for now
 	 */
 	if (unlikely(skb->pkt_type != PACKET_HOST)) {
-		STOA_DBG("packet type=%d proto=%d daddr=%pI4 ignored\n",
+		IP_VS_CA_DBG("packet type=%d proto=%d daddr=%pI4 ignored\n",
 				skb->pkt_type,
 				iph.protocol, &iph.daddr.ip);
 		goto out;
@@ -208,7 +210,7 @@ stoa_in_hook(unsigned int hooknum, struct sk_buff *skb,
 	}
 
 	/* Protocol supported? */
-	pp = stoa_proto_get(iph.protocol);
+	pp = ip_vs_ca_proto_get(iph.protocol);
 	if (unlikely(!pp))
 		goto out;
 
@@ -218,7 +220,7 @@ stoa_in_hook(unsigned int hooknum, struct sk_buff *skb,
 	cp = pp->conn_get(af, skb, pp, &iph, iph.len);
 
 	if (likely(cp)) {
-		stoa_conn_put(cp);
+		ip_vs_ca_conn_put(cp);
 		goto out;
 	} else {
 		int v;
@@ -236,9 +238,9 @@ out:
 	return NF_ACCEPT;
 }
 
-static struct nf_hook_ops stoa_ops[] __read_mostly = { 
+static struct nf_hook_ops ip_vs_ca_ops[] __read_mostly = { 
 	{
-		.hook     = stoa_in_hook,         
+		.hook     = ip_vs_ca_in_hook,         
 		.owner    = THIS_MODULE,
 		.pf       = NFPROTO_IPV4,
 		.hooknum  = NF_INET_LOCAL_IN, 
@@ -246,66 +248,66 @@ static struct nf_hook_ops stoa_ops[] __read_mostly = {
 	},
 };
 
-static int __init stoa_init(void)
+static int __init ip_vs_ca_init(void)
 {
 	int ret;
 
-	ret = stoa_syscall_init();
+	ret = ip_vs_ca_syscall_init();
 	if (ret < 0){
-		STOA_ERR("can't modify syscall table.\n");
+		IP_VS_CA_ERR("can't modify syscall table.\n");
 		goto out_err;
 	}
-	STOA_DBG("modify syscall table done.\n");
+	IP_VS_CA_DBG("modify syscall table done.\n");
 
-	stoa_protocol_init();
-	STOA_DBG("stoa_protocol_init done.\n");
+	ip_vs_ca_protocol_init();
+	IP_VS_CA_DBG("ip_vs_ca_protocol_init done.\n");
 
-	ret = stoa_control_init();
+	ret = ip_vs_ca_control_init();
 	if (ret < 0){
-		STOA_ERR("can't modify syscall table.\n");
+		IP_VS_CA_ERR("can't modify syscall table.\n");
 		goto cleanup_syscall;
 	}
-	STOA_DBG("stoa_control_init done.\n");
+	IP_VS_CA_DBG("ip_vs_ca_control_init done.\n");
 
-	ret = stoa_conn_init();
+	ret = ip_vs_ca_conn_init();
 	if (ret < 0){
-		STOA_ERR("can't setup connection table.\n");
+		IP_VS_CA_ERR("can't setup connection table.\n");
 		goto cleanup_control;
 	}
-	STOA_DBG("stoa_conn_init done.\n");
+	IP_VS_CA_DBG("ip_vs_ca_conn_init done.\n");
 
-	ret = nf_register_hooks(stoa_ops, ARRAY_SIZE(stoa_ops));
+	ret = nf_register_hooks(ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
 	if (ret < 0){
-		STOA_ERR("can't register hooks.\n");
+		IP_VS_CA_ERR("can't register hooks.\n");
 		goto cleanup_conn;
 	}
-	STOA_DBG("nf_register_hooks done.\n");
+	IP_VS_CA_DBG("nf_register_hooks done.\n");
 
-	STOA_INFO("stoa loaded.");
+	IP_VS_CA_INFO("ip_vs_ca loaded.");
 	return ret;
 
 cleanup_conn:
-	stoa_conn_cleanup();
+	ip_vs_ca_conn_cleanup();
 cleanup_control:
-	stoa_control_cleanup();
+	ip_vs_ca_control_cleanup();
 cleanup_syscall:
-	stoa_syscall_cleanup();
+	ip_vs_ca_syscall_cleanup();
 out_err:
 	return ret;
 }
 
-static void __exit stoa_exit(void)
+static void __exit ip_vs_ca_exit(void)
 {
-	nf_unregister_hooks(stoa_ops, ARRAY_SIZE(stoa_ops));
-	stoa_conn_cleanup();
-	stoa_protocol_cleanup();
-	stoa_control_cleanup();
-	stoa_syscall_cleanup();
-	STOA_INFO("stoa unloaded.");
+	nf_unregister_hooks(ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
+	ip_vs_ca_conn_cleanup();
+	ip_vs_ca_protocol_cleanup();
+	ip_vs_ca_control_cleanup();
+	ip_vs_ca_syscall_cleanup();
+	IP_VS_CA_INFO("ip_vs_ca unloaded.");
 }
 
-module_init(stoa_init);
-module_exit(stoa_exit);
+module_init(ip_vs_ca_init);
+module_exit(ip_vs_ca_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Yu Bo<yubo@yubo.org>");
 
