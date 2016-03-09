@@ -20,11 +20,11 @@ struct syscall_links sys;
 //asmlinkage int (*_accept4) (int, struct sockaddr *, int *, int);
 // recvmsg recvfrom
 
-static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
+static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int append)
 {
 	int err, len;
 	struct socket *sock;
-	struct sockaddr_in sin;
+	struct sockaddr_in sin[2];
 	union nf_inet_addr addr;
 	struct ip_vs_ca_conn *cp;
 
@@ -32,15 +32,15 @@ static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 	if (err)
 		return 1;
 
-	if (len != sizeof(sin)){
+	if (len != sizeof(struct sockaddr_in)){
 		return 2;
 	}
 
-	err = copy_from_user(&sin, uaddr, len);
+	err = copy_from_user(sin, uaddr, len);
 	if (err)
 		return 3;
 
-	if (sin.sin_family != AF_INET)
+	if (sin[0].sin_family != AF_INET)
 		return 4;
 
 	sock = sockfd_lookup(fd, &err);
@@ -48,33 +48,50 @@ static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen)
 		return 5;
 
 	IP_VS_CA_DBG("%s called, sin{.family:%d, .port:%d, addr:%pI4} sock.type:%d\n",
-			__func__, sin.sin_family, ntohs(sin.sin_port),
-			&sin.sin_addr.s_addr, sock->type);
+			__func__, sin[0].sin_family, ntohs(sin[0].sin_port),
+			&sin[0].sin_addr.s_addr, sock->type);
 
-	addr.ip = sin.sin_addr.s_addr;
+	addr.ip = sin[0].sin_addr.s_addr;
 
 	if (sock->type == SOCK_STREAM){
-		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_TCP, &addr, sin.sin_port);
+		cp = ip_vs_ca_conn_get(sin[0].sin_family, IPPROTO_TCP, &addr, sin[0].sin_port);
 	}else if(sock->type == SOCK_DGRAM){
-		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_UDP, &addr, sin.sin_port);
+		cp = ip_vs_ca_conn_get(sin[0].sin_family, IPPROTO_UDP, &addr, sin[0].sin_port);
 	}else{
 		return 6;
 	}
+
+	IP_VS_CA_DBG("lookup type:%d %pI4:%d %s\n",
+				sock->type,
+				&addr.ip, ntohs(sin[0].sin_port),
+				cp ? "hit" : "not hit");
 
 	if (!cp)
 		return 7;
 
 	IP_VS_CA_DBG("%s called, %d %pI4:%d(%pI4:%d)->%pI4:%d\n",
 			__func__, cp->protocol,
-			&sin.sin_addr.s_addr, ntohs(sin.sin_port),
+			&sin[0].sin_addr.s_addr, ntohs(sin[0].sin_port),
 			&cp->o_addr.ip, ntohs(cp->o_port),
 			&cp->d_addr.ip, ntohs(cp->d_port));
-	sin.sin_addr.s_addr = cp->o_addr.ip;
-	sin.sin_port = cp->o_port;
-	ip_vs_ca_conn_put(cp);
-	if(copy_to_user(uaddr, &sin, len))
-		return 8;
-	
+	if (append){
+		memcpy(&sin[1], sin, sizeof(struct sockaddr_in));
+		sin[1].sin_addr.s_addr = cp->o_addr.ip;
+		sin[1].sin_port = cp->o_port;
+		ip_vs_ca_conn_put(cp);
+		IP_VS_CA_DBG("copy_to_user\n");
+		if(copy_to_user(uaddr, sin, 2*len))
+			return 8;
+		IP_VS_CA_DBG("put_user\n");
+		if (put_user(2*len, ulen))
+			return 9;
+	}else{
+		sin[0].sin_addr.s_addr = cp->o_addr.ip;
+		sin[0].sin_port = cp->o_port;
+		ip_vs_ca_conn_put(cp);
+		if(copy_to_user(uaddr, sin, len))
+			return 8;
+	}
 	return 0;
 }
 
@@ -88,11 +105,11 @@ getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 
 	IP_VS_CA_DBG("getpeername called\n");
 
-	ret =  sys.getpeername(fd, usockaddr, usockaddr_len);
+	ret = sys.getpeername(fd, usockaddr, usockaddr_len);
 	if (ret < 0)
 		return ret;
 
-	err = ip_vs_ca_modify_uaddr(fd, usockaddr, usockaddr_len);
+	err = ip_vs_ca_modify_uaddr(fd, usockaddr, usockaddr_len, 0);
 	if (err)
 		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr return:%d\n", err);
 
@@ -110,9 +127,40 @@ accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 	if (ret < 0)
 		return ret;
 
-	err = ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen);
+	err = ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen, 0);
 	if (err)
 		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", err);
+
+	return ret;
+}
+
+asmlinkage static int
+recvfrom(int fd, void *ubuf, size_t size,
+			unsigned flags, struct sockaddr *addr, int *addr_len){
+	int l1, l2, ret, err;
+
+
+	if(addr == NULL || addr_len == NULL){
+		return sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
+	}
+
+	err = get_user(l1, addr_len);
+	if (err)
+		return -1;
+
+	ret = sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
+	if (ret < 0)
+		return ret;
+
+	err = get_user(l2, addr_len);
+	if (err)
+		return ret;
+
+	if(l1 == 2 * sizeof(struct sockaddr_in) && l2 == sizeof(struct sockaddr_in)){
+		err = ip_vs_ca_modify_uaddr(fd, addr, addr_len, 1);
+		if (err)
+			IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", err);
+	}
 
 	return ret;
 }
@@ -151,9 +199,11 @@ static int ip_vs_ca_syscall_init(void)
 	write_cr0(original_cr0 & ~0x00010000);
 	IP_VS_CA_DBG("Loading ip_vs_ca module, sys call table at %p\n", sys_call_table);
 	sys.getpeername = (void *)(sys_call_table[__NR_getpeername]);
-	sys.accept4 = (void *)(sys_call_table[__NR_accept4]);
+	sys.accept4     = (void *)(sys_call_table[__NR_accept4]);
+	sys.recvfrom    = (void *)(sys_call_table[__NR_recvfrom]);
 	sys_call_table[__NR_getpeername] = (void *)getpeername;
-	sys_call_table[__NR_accept4] = (void *)accept4;
+	sys_call_table[__NR_accept4]     = (void *)accept4;
+	sys_call_table[__NR_recvfrom]    = (void *)recvfrom;
 	write_cr0(original_cr0);
 
 	return 0;
@@ -167,7 +217,8 @@ static void ip_vs_ca_syscall_cleanup(void)
 
 	write_cr0(original_cr0 & ~0x00010000);
 	sys_call_table[__NR_getpeername] = (void *)sys.getpeername;
-	sys_call_table[__NR_accept4] = (void *)sys.accept4;
+	sys_call_table[__NR_accept4]     = (void *)sys.accept4;
+	sys_call_table[__NR_recvfrom]    = (void *)sys.recvfrom;
 	write_cr0(original_cr0);
 	//msleep(100);
 	sys_call_table = NULL;
@@ -205,31 +256,94 @@ ip_vs_ca_in_hook(unsigned int hooknum, struct sk_buff *skb,
 		goto out;
 	}
 
-	if (unlikely(iph.protocol == IPPROTO_ICMP)) {
-		goto out;
-	}
+	if (iph.protocol == IPPROTO_ICMP) {
+		struct iphdr *ih;
+		struct icmphdr _icmph, *icmph;
+		struct ipvs_ca _ca, *ca;
 
-	/* Protocol supported? */
-	pp = ip_vs_ca_proto_get(iph.protocol);
-	if (unlikely(!pp))
-		goto out;
+		IP_VS_CA_DBG("icmp packet recv\n");
 
-	/*
-	 * Check if the packet belongs to an existing connection entry
-	 */
-	cp = pp->conn_get(af, skb, pp, &iph, iph.len);
+		ih = (struct iphdr *)skb_network_header(skb);
 
-	if (likely(cp)) {
-		ip_vs_ca_conn_put(cp);
-		goto out;
-	} else {
-		int v;
-		/* create a new connection */
-		if(pp->skb_process(af, skb, pp, &iph, &v, &cp) == 0){
-			//LeaveFunction();
-			return v;
-		}else{
+		icmph = skb_header_pointer(skb, iph.len,
+				sizeof(_icmph), &_icmph);
+
+		if (icmph == NULL){
+			IP_VS_CA_DBG("icmphdr NULL\n");
 			goto out;
+		}
+
+		if(ntohs(ih->tot_len) == sizeof(*ih)+sizeof(*icmph)+sizeof(*ca)
+				&& icmph->type == ICMP_ECHO 
+				&& icmph->code == 0 
+				&& icmph->un.echo.id == 0x1234
+				&& icmph->un.echo.sequence == 0){
+			ca = skb_header_pointer(skb, iph.len + sizeof(*icmph),
+				sizeof(_ca), &_ca);
+
+			if (ca == NULL){
+				IP_VS_CA_DBG("ca NULL\n");
+				goto out;
+			}
+
+			if(ca->code != 123
+					|| ca->toa.opcode != TCPOPT_ADDR
+					|| ca->toa.opsize != TCPOLEN_ADDR){
+				IP_VS_CA_DBG("ca not hit. {.code:%d, .protocol:%d,"
+						" .toa.opcode:%d, .toa.opsize:%d}\n",
+						ca->code, ca->protocol, ca->toa.opcode, ca->toa.opsize);
+				goto out;
+			}
+
+			pp = ip_vs_ca_proto_get(ca->protocol);
+			if (unlikely(!pp))
+				goto out;
+
+			cp = pp->conn_get(af, skb, pp, &iph, iph.len);
+			if(unlikely(cp)){
+				ip_vs_ca_conn_put(cp);
+				goto out;
+			}else{
+				int v;
+				if(pp->icmp_process(af, skb, pp, &iph, icmph, ca,
+							&v, &cp) == 0){
+					return v;
+				}else{
+					goto out;
+				}
+			}
+		}else{
+			IP_VS_CA_DBG("icmphdr not hit tot_len:%d, "
+					"icmp{.type:%d, .code:%d .echo.id:0x%04x,"
+					" .echo.sequence:%d}\n", 
+					ntohs(ih->tot_len), icmph->type,
+					icmph->code, icmph->un.echo.id,
+					icmph->un.echo.sequence);
+			goto out;
+		}
+	}else if (iph.protocol == IPPROTO_TCP) {
+		/* Protocol supported? */
+		pp = ip_vs_ca_proto_get(iph.protocol);
+		if (unlikely(!pp))
+			goto out;
+
+		/*
+		 * Check if the packet belongs to an existing connection entry
+		 */
+		cp = pp->conn_get(af, skb, pp, &iph, iph.len);
+
+		if (likely(cp)) {
+			ip_vs_ca_conn_put(cp);
+			goto out;
+		} else {
+			int v;
+			/* create a new connection */
+			if(pp->skb_process(af, skb, pp, &iph, &v, &cp) == 0){
+				//LeaveFunction();
+				return v;
+			}else{
+				goto out;
+			}
 		}
 	}
 

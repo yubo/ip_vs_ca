@@ -13,6 +13,39 @@
 
 struct ip_vs_ca_stat_mib *ext_stats;
 
+static struct ctl_table_header *sysctl_header;
+extern int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1];
+
+/*
+ *	IPVS sysctl table (under the /proc/sys/net/ipv4/vs/)
+ */
+static struct ctl_table vs_vars[] = {
+	{
+	 .procname = "tcp_timeout",
+	 .data = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_TCP],
+	 .maxlen = sizeof(int),
+	 .mode = 0644,
+	 .proc_handler = proc_dointvec_jiffies,
+	 },
+	{
+	 .procname = "udp_timeout",
+	 .data = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_UDP],
+	 .maxlen = sizeof(int),
+	 .mode = 0644,
+	 .proc_handler = proc_dointvec_jiffies,
+	 },
+	{.ctl_name = 0}
+};
+
+const struct ctl_path net_vs_ctl_path[] = {
+	{.procname = "net",.ctl_name = CTL_NET,},
+	{.procname = "ipv4",.ctl_name = NET_IPV4,},
+	{.procname = "vs",},
+	{}
+};
+EXPORT_SYMBOL_GPL(net_vs_ctl_path);
+
+
 struct ip_vs_ca_stats_entry ip_vs_ca_stats[] = {
 	IP_VS_CA_STAT_ITEM("syn_recv_sock_ip_vs_ca", SYN_RECV_SOCK_IP_VS_CA_CNT),
 	IP_VS_CA_STAT_ITEM("syn_recv_sock_no_ip_vs_ca", SYN_RECV_SOCK_NO_IP_VS_CA_CNT),
@@ -76,12 +109,16 @@ int __init ip_vs_ca_control_init(void){
 		return 1;
 
 	proc_net_fops_create(&init_net, "ip_vs_ca_stats", 0, &ip_vs_ca_stats_fops);
+
+	sysctl_header = register_sysctl_paths(net_vs_ctl_path, vs_vars);
+
 	return 0;
 }
 
 void ip_vs_ca_control_cleanup(void)
 {
 	synchronize_net();
+	unregister_sysctl_table(sysctl_header);
 	proc_net_remove(&init_net, "ip_vs_ca_stats");
 	if (NULL != ext_stats) {
 		free_percpu(ext_stats);

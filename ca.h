@@ -6,8 +6,10 @@
 #include <linux/ip.h>
 #include <linux/ipv6.h>		/* for struct ipv6hdr */
 #include <net/ipv6.h>		/* for ipv6_addr_copy */
+#include <net/icmp.h>		/* for icmp_send */
 
 #define IP_VS_CA_VERSION "0.0.1"
+#define IP_VS_CA_DEBUG
 
 #define IP_VS_CA_CONN_TAB_BITS     8
 #define IP_VS_CA_CONN_TAB_SIZE     (1 << IP_VS_CA_CONN_TAB_BITS)
@@ -16,26 +18,27 @@
 #define IP_VS_CA_CONN_F_HASHED	0x0040		/* hashed entry */
 #define IP_VS_CA_CONN_F_ONE_PACKET	0x2000		/* forward only one packet */
 
-#define EnterFunction()						\
-	do {								\
-			printk(KERN_DEBUG				\
-			       pr_fmt("Enter: %s, %s line %i\n"),	\
-			       __func__, __FILE__, __LINE__);		\
-	} while (0)
-#define LeaveFunction()						\
-	do {								\
-			printk(KERN_DEBUG				\
-			       pr_fmt("Leave: %s, %s line %i\n"),	\
-			       __func__, __FILE__, __LINE__);		\
-	} while (0)
-
 #define IP_VS_CA_ERR(msg...)						\
 	do {									\
 		printk(KERN_ERR "[ERR] IP_VS_CA: " msg);\
 	} while (0)
 
+#ifdef IP_VS_CA_DEBUG
+#define EnterFunction()						\
+	do {								\
+			printk(KERN_DEBUG				\
+			pr_fmt("Enter: %s, %s line %i\n"),	\
+				__func__, __FILE__, __LINE__);	\
+	} while (0)
+#define LeaveFunction()						\
+	do {								\
+			printk(KERN_DEBUG				\
+				pr_fmt("Leave: %s, %s line %i\n"),	\
+				__func__, __FILE__, __LINE__);		\
+	} while (0)
 #define IP_VS_CA_DBG(msg...)							\
 	do {										\
+		if (net_ratelimit())			\
 		printk(KERN_DEBUG "[DEBUG] IP_VS_CA: " msg);\
 	} while (0)
 
@@ -44,10 +47,19 @@
 		if (net_ratelimit())			\
 		printk(KERN_INFO "[INFO] IP_VS_CA: " msg);	\
 	} while (0)
+#else
 
-#define TCPOPT_IP_VS_CA  254
+#define EnterFunction()  do {} while (0)
+#define LeaveFunction()  do {} while (0)
+#define IP_VS_CA_DBG(msg...)  do {} while (0)
+#define IP_VS_CA_INFO(msg...)  do {} while (0)
+
+
+#endif
+
+#define TCPOPT_ADDR  254
 /* MUST be 4n !!!! */
-#define TCPOLEN_IP_VS_CA 8		/* |opcode|size|ip+port| = 1 + 1 + 6 */
+#define TCPOLEN_ADDR 8		/* |opcode|size|ip+port| = 1 + 1 + 6 */
 
 struct ip_vs_ca_conn;
 struct ip_vs_ca_iphdr;
@@ -102,7 +114,7 @@ struct ip_vs_ca_conn {
 	struct list_head c_list;         /* hashed list heads */
 
 	u16 af;                          /* address family */
-	__u16 protocol;                  /* Which protocol (TCP/UDP) */
+	__u8 protocol;                  /* Which protocol (TCP/UDP) */
 	union nf_inet_addr s_addr;       /* source address */
 	union nf_inet_addr d_addr;       /* destination address */
 	__be16 s_port;                   /* source port */
@@ -123,16 +135,25 @@ struct ip_vs_ca_conn {
 };
 
 /* MUST be 4 bytes alignment */
-struct _tcp_ip_vs_ca_data {
+struct ip_vs_tcpo_addr {
 	__u8 opcode;
 	__u8 opsize;
 	__u16 port;
-	__u32 ip;
+	__u32 addr;
+};
+
+
+struct ipvs_ca {
+	__u8 code;			/* magic code */
+	__u8 protocol;		/* Which protocol (TCP/UDP) */
+	__be16 sport;
+	__be16 dport;
+	struct ip_vs_tcpo_addr toa;
 };
 
 union ip_vs_ca_data {
 	__u64 data;
-	struct _tcp_ip_vs_ca_data tcp;
+	struct ip_vs_tcpo_addr tcp;
 };
 
 /* statistics about toa in proc /proc/net/ip_vs_ca_stat */
@@ -145,6 +166,13 @@ enum {
 	GETNAME_IP_VS_CA_EMPTY_CNT,
 	IP_VS_CA_STAT_LAST
 };
+
+enum {
+	IP_VS_CA_S_TCP = 0,
+	IP_VS_CA_S_UDP,
+	IP_VS_CA_S_LAST
+};
+
 
 struct ip_vs_ca_stats_entry {
 	char *name;
@@ -182,23 +210,22 @@ struct syscall_links {
 struct ip_vs_ca_protocol {
 	struct ip_vs_ca_protocol *next;
 	char *name;
-	u16 protocol;
+	__u8 protocol;
 	u16 num_states;
 	int dont_defrag;
 	atomic_t appcnt;	/* counter of proto app incs */
-	int *timeout_table;	/* protocol timeout table */
+	int *timeout;		/* protocol timeout table */
 
 	int (*skb_process) (int af, struct sk_buff * skb,
 			      struct ip_vs_ca_protocol * pp,
 			      const struct ip_vs_ca_iphdr * iph,
 			      int *verdict, struct ip_vs_ca_conn ** cpp);
 
-	void (*debug_packet) (struct ip_vs_ca_protocol * pp,
-			      const struct sk_buff * skb,
-			      int offset, const char *msg);
-
-	int (*set_state_timeout) (struct ip_vs_ca_protocol * pp, char *sname,
-				  int to);
+	int (*icmp_process) (int af, struct sk_buff * skb,
+			      struct ip_vs_ca_protocol * pp,
+			      const struct ip_vs_ca_iphdr * iph,
+				  struct icmphdr *icmph, struct ipvs_ca *ca,
+			      int *verdict, struct ip_vs_ca_conn ** cpp);
 
 	struct ip_vs_ca_conn *
 	    (*conn_get) (int af, const struct sk_buff * skb,
@@ -206,8 +233,6 @@ struct ip_vs_ca_protocol {
 			    const struct ip_vs_ca_iphdr * iph,
 			    unsigned int proto_off);
 
-	void (*conn_expire_handler) (struct ip_vs_ca_protocol * pp,
-				     struct ip_vs_ca_conn * cp);
 };
 
 static inline void __ip_vs_ca_conn_put(struct ip_vs_ca_conn *cp)
@@ -219,13 +244,14 @@ extern int ip_vs_ca_conn_init(void);
 extern void ip_vs_ca_conn_cleanup(void);
 extern void ip_vs_ca_conn_put(struct ip_vs_ca_conn *cp);
 extern void ip_vs_ca_conn_cleanup(void);
-extern struct ip_vs_ca_conn *ip_vs_ca_conn_get(int af, int protocol,
+extern struct ip_vs_ca_conn *ip_vs_ca_conn_get(int af, __u8 protocol,
 	 const union nf_inet_addr *s_addr, __be16 s_port);
-extern struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af, int proto,
-				  __be32 saddr, __be16 sport,
-				  __be32 daddr, __be16 dport,
-				  __be32 oaddr, __be16 oport,
-				  struct sk_buff *skb);
+struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
+					struct ip_vs_ca_protocol *pp,
+					__be32 saddr, __be16 sport,
+					__be32 daddr, __be16 dport,
+					__be32 oaddr, __be16 oport,
+					struct sk_buff *skb);
 
 extern int ip_vs_ca_protocol_init(void);
 extern void ip_vs_ca_protocol_cleanup(void);

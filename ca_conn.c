@@ -196,7 +196,7 @@ static void ip_vs_ca_conn_expire(unsigned long data)
 		
 		atomic_dec(&ip_vs_ca_conn_count);
 
-#if 0
+#if 1
 		IP_VS_CA_DBG("conn expire: %pI4:%d(%pI4:%d) -> %pI4:%d timer:%p\n",
 				&cp->s_addr.ip, ntohs(cp->s_port),
 				&cp->o_addr.ip, ntohs(cp->o_port),
@@ -217,11 +217,12 @@ expire_later:
 	ip_vs_ca_conn_put(cp);
 }
 
-struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af, int proto,
-				  __be32 saddr, __be16 sport,
-				  __be32 daddr, __be16 dport,
-				  __be32 oaddr, __be16 oport,
-				  struct sk_buff *skb)
+struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
+					struct ip_vs_ca_protocol *pp,
+					__be32 saddr, __be16 sport,
+					__be32 daddr, __be16 dport,
+					__be32 oaddr, __be16 oport,
+					struct sk_buff *skb)
 {
 	struct ip_vs_ca_conn *cp;
 
@@ -237,7 +238,7 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af, int proto,
 	IP_VS_CA_DBG("setup_timer, %p\n", &cp->timer);
 	setup_timer(&cp->timer, ip_vs_ca_conn_expire, (unsigned long)cp);
 	cp->af = af;
-	cp->protocol = proto;
+	cp->protocol = pp->protocol;
 	//ip_vs_ca_addr_copy(af, &cp->saddr, saddr);
 	cp->s_addr.ip = saddr;
 	cp->s_port = sport;
@@ -255,11 +256,12 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af, int proto,
 	atomic_inc(&ip_vs_ca_conn_count);
 
 	cp->state = 0;
-	cp->timeout = 3 * HZ;
+	cp->timeout = *pp->timeout;
 
 	ip_vs_ca_conn_hash(cp);
 
-	IP_VS_CA_DBG("conn new: %pI4:%d(%pI4:%d) -> %pI4:%d\n",
+	IP_VS_CA_DBG("conn new: proto:%u, %pI4:%d(%pI4:%d) -> %pI4:%d\n",
+			cp->protocol,
 			&cp->s_addr.ip, ntohs(cp->s_port),
 			&cp->o_addr.ip, ntohs(cp->o_port),
 			&cp->d_addr.ip, ntohs(cp->d_port));
@@ -271,7 +273,7 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af, int proto,
  * just ipv4
  */
 struct ip_vs_ca_conn *ip_vs_ca_conn_get
-    (int af, int protocol,
+    (int af, __u8 protocol,
 	 const union nf_inet_addr *s_addr, __be16 s_port) {
 	unsigned hash;
 	struct ip_vs_ca_conn *cp;
@@ -293,13 +295,14 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_get
 	cp = NULL;
 
 out:
-	/*
-	IP_VS_CA_DBG("lookup %s %pI4:%d -> %pI4:%d %s\n",
-				ip_vs_ca_proto_name(protocol),
+
+#if 0
+	if (protocol == IPPROTO_UDP)
+	IP_VS_CA_DBG("lookup proto:%u %pI4:%d %s\n",
+				protocol,
 				&s_addr->ip, ntohs(s_port),
-				&d_addr->ip, ntohs(d_port),
 				cp ? "hit" : "not hit");
-				*/
+#endif
 
 	ct_read_unlock(hash);
 	return cp;
@@ -308,6 +311,7 @@ out:
 void ip_vs_ca_conn_put(struct ip_vs_ca_conn *cp)
 {
 	/* reset it expire in its timeout */
+	/* IP_VS_CA_DBG("mod_timer %lu\n", cp->timeout / HZ); */
 	mod_timer(&cp->timer, jiffies + cp->timeout);
 	__ip_vs_ca_conn_put(cp);
 }
