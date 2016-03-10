@@ -2,7 +2,9 @@
 
 get ip vs(fullnat) client addr 
 
-由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp, 相应lvs内核稍后放出, 开发环境为centos 6.6/ linux 2.6.32,其他环境还未做适配
+由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp, 开发环境为centos 6.6/ linux 2.6.32,其他环境还未做适配
+
+对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2)
 
 ## Feature
   - [x] Build as a module
@@ -46,9 +48,15 @@ rmmod ip_vs_ca
 	n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
 			(struct sockaddr *)peeraddr, &peerlen);
 	if(peerlen == sizeof(struct sockaddr_in)){
-		printf("recv %d %s:%d\n", peerlen, inet_ntoa(peeraddr[0].sin_addr), ntohs(peeraddr[0].sin_port));
+		printf("recv %d %s:%d\n", peerlen,
+			inet_ntoa(peeraddr[0].sin_addr),
+			ntohs(peeraddr[0].sin_port));
 	}else if(peerlen == sizeof(peeraddr)){
-		printf("recv %d %s:%d", peerlen, inet_ntoa(peeraddr[0].sin_addr), ntohs(peeraddr[0].sin_port));
-		printf("(%s:%d)\n", inet_ntoa(peeraddr[1].sin_addr), ntohs(peeraddr[1].sin_port));
+		printf("recv %d %s:%d", peerlen,
+			inet_ntoa(peeraddr[0].sin_addr),
+			ntohs(peeraddr[0].sin_port));
+		printf("(%s:%d)\n",
+			inet_ntoa(peeraddr[1].sin_addr),
+			ntohs(peeraddr[1].sin_port));
 	}
 ```
