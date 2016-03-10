@@ -11,13 +11,22 @@
 
 #include "ca.h"
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+#define USE_PROC_CTREATE
+#endif
+
 struct ip_vs_ca_stat_mib *ext_stats;
 
+#ifdef USE_PROC_CTREATE
+static struct proc_dir_entry *ca_stats;
+#endif
 static struct ctl_table_header *sysctl_header;
 extern int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1];
 
 /*
- *	IPVS sysctl table (under the /proc/sys/net/ipv4/vs/)
+ *	IPVS sysctl table (under the /proc/sys/net/ipv4/ca/)
+ *	Do not change order or insert new entries without
+ *	align with netns init in ip_vs_control_net_init()
  */
 static struct ctl_table vs_vars[] = {
 	{
@@ -34,14 +43,18 @@ static struct ctl_table vs_vars[] = {
 	 .mode = 0644,
 	 .proc_handler = proc_dointvec_jiffies,
 	 },
-	{.ctl_name = 0}
+	{.procname = 0}
 };
 
 const struct ctl_path net_vs_ctl_path[] = {
-	{.procname = "net",.ctl_name = CTL_NET,},
-	{.procname = "ipv4",.ctl_name = NET_IPV4,},
-	{.procname = "vs",},
-	{}
+	{
+		.procname = "net",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+		.ctl_name = CTL_NET,
+#endif
+	},
+	{.procname = "ca"},
+	{.procname = 0}
 };
 EXPORT_SYMBOL_GPL(net_vs_ctl_path);
 
@@ -108,7 +121,11 @@ int __init ip_vs_ca_control_init(void){
 	if (NULL == ext_stats)
 		return 1;
 
+#ifdef USE_PROC_CTREATE
+	ca_stats = proc_create("ip_vs_ca_stats", 0, init_net.proc_net, &ip_vs_ca_stats_fops);
+#else
 	proc_net_fops_create(&init_net, "ip_vs_ca_stats", 0, &ip_vs_ca_stats_fops);
+#endif
 
 	sysctl_header = register_sysctl_paths(net_vs_ctl_path, vs_vars);
 
@@ -119,7 +136,11 @@ void ip_vs_ca_control_cleanup(void)
 {
 	synchronize_net();
 	unregister_sysctl_table(sysctl_header);
+#ifdef USE_PROC_CTREATE
+	proc_remove(ca_stats);
+#else
 	proc_net_remove(&init_net, "ip_vs_ca_stats");
+#endif
 	if (NULL != ext_stats) {
 		free_percpu(ext_stats);
 		ext_stats = NULL;

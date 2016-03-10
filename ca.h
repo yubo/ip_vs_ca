@@ -1,6 +1,7 @@
 #ifndef __IP_VS_CA_H__
 #define __IP_VS_CA_H__
 
+#include <linux/version.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/ip.h>

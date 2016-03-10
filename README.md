@@ -4,6 +4,8 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp, 开发环境为centos 6.6/ linux 2.6.32,其他环境还未做适配
 
+centos7.2(linux 3.10.0-237.4.5)编译通过
+
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2)
 
 ## Feature
@@ -11,7 +13,7 @@ get ip vs(fullnat) client addr
   - [x] Support TCP
   - [x] Support UDP
   - [x] Support centos 6.6
-  - [ ] Support centos 7.x
+  - [x] Support centos 7.2
 
 ## Demo
 

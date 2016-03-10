@@ -14,10 +14,6 @@ do { \
 	exit(EXIT_FAILURE); \
 } while (0)
 
-static void echo_ser(int sock)
-{
-}
-
 int main(int argc, char *argv[])
 {
 	int sock, on;

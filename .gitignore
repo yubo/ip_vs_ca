@@ -16,3 +16,4 @@ linux/
 *.pyc
 tmp/
 udpd
+kernel/

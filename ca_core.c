@@ -224,10 +224,28 @@ static void ip_vs_ca_syscall_cleanup(void)
 	sys_call_table = NULL;
 }
 
+static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+static unsigned int
+ip_vs_ca_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb,
+		      const struct net_device *in,
+		      const struct net_device *out,
+		      const struct nf_hook_state *state)
+{
+	return _ip_vs_ca_in_hook(skb);
+}
+#else
 static unsigned int
 ip_vs_ca_in_hook(unsigned int hooknum, struct sk_buff *skb,
 		const struct net_device *in, const struct net_device *out,
 		int (*okfn) (struct sk_buff *))
+{
+	return _ip_vs_ca_in_hook(skb);
+}
+#endif
+
+static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 {
 	struct ip_vs_ca_iphdr iph;
 	struct ip_vs_ca_conn *cp;
@@ -354,10 +372,10 @@ out:
 
 static struct nf_hook_ops ip_vs_ca_ops[] __read_mostly = { 
 	{
-		.hook     = ip_vs_ca_in_hook,         
+		.hook     = ip_vs_ca_in_hook,
 		.owner    = THIS_MODULE,
 		.pf       = NFPROTO_IPV4,
-		.hooknum  = NF_INET_LOCAL_IN, 
+		.hooknum  = NF_INET_LOCAL_IN,
 		.priority = NF_IP_PRI_CONNTRACK_CONFIRM,
 	},
 };
