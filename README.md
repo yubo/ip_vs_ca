@@ -4,9 +4,11 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp
 
-支持 centos6.6(2.6.32-220) / centos7.2(linux 3.10.0-237.4.5)
+支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5)
 
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2),兼容[taobao/LVS(lvs_v2)](https://github.com/alibaba/LVS/tree/lvs_v2)
+
+支持taobao/lvs_v2版本的tcp opt报文格式，新加入了icmp echo报文(payload),实现了tcp/udp local - client 地址对应关系的通告
 
 ## Feature
   - [x] Build as a module
@@ -42,6 +44,11 @@ make
 rpm -ivh ~/rpmbuild/RPMS/x86_64/kmod-ip_vs_ca-0.01-1.el7.centos.x86_64.rpm
 modprobe ip_vs_ca
 ```
+
+### proc sys ctl
+可以通过修改以下文件来设置连接超时回收的时间
+   - /proc/sys/net/ca/tcp_timeout (defualt 90s)
+   - /proc/sys/net/ca/udp_timeout (defualt 180s)
 
 ## Udpd example
 

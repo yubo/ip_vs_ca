@@ -24,7 +24,7 @@ static struct ctl_table_header *sysctl_header;
 extern int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1];
 
 /*
- *	IPVS sysctl table (under the /proc/sys/net/ipv4/ca/)
+ *	IPVS sysctl table (under the /proc/sys/net/ca/)
  *	Do not change order or insert new entries without
  *	align with netns init in ip_vs_control_net_init()
  */
