@@ -1,23 +1,16 @@
-KERNEL_DIR = /lib/modules/`uname -r`/build
-MODULEDIR := $(shell pwd)
+RPMBUILD=~/rpmbuild/
 
+all: srpm kmod
 
-.PHONY: modules start stop restart
-default: modules
+srpm:
+	mkdir -p $(RPMBUILD)/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	tar -cjf $(RPMBUILD)/SOURCES/ip_vs_ca.tar.bz2 -C src ip_vs_ca
+	cp src/ip_vs_ca-kmodtool.sh $(RPMBUILD)/SOURCES
+	cp src/ip_vs_ca-kmod.spec $(RPMBUILD)/SPECS
+	rpmbuild -bs $(RPMBUILD)/SPECS/ip_vs_ca-kmod.spec
 
-modules:
-	make -C $(KERNEL_DIR) M=$(MODULEDIR) modules
+kmod:
+	rpmbuild --rebuild $(RPMBUILD)/SRPMS/ip_vs_ca*.rpm
 
-clean distclean:
-	rm -f *.o *.mod.c .*.*.cmd *.ko *.ko.unsigned
-	rm -rf .tmp_versions
-	rm -f udpd *.order *.symvers .*.cmd
-
-start:
-	insmod ./ip_vs_ca.ko
-
-stop:
-	rmmod ip_vs_ca
-
-restart:
-	remod ip_vs_ca && insmod ./ip_vs_ca.ko
+clean:
+	rm -rf out/*
