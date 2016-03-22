@@ -229,9 +229,9 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 static unsigned int
 ip_vs_ca_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb,
-		      const struct net_device *in,
-		      const struct net_device *out,
-		      const struct nf_hook_state *state)
+			const struct net_device *in,
+			const struct net_device *out,
+			const void *ignore)
 {
 	return _ip_vs_ca_in_hook(skb);
 }
@@ -372,7 +372,7 @@ out:
 
 static struct nf_hook_ops ip_vs_ca_ops[] __read_mostly = { 
 	{
-		.hook     = ip_vs_ca_in_hook,
+		.hook     = (nf_hookfn *)ip_vs_ca_in_hook,
 		.owner    = THIS_MODULE,
 		.pf       = NFPROTO_IPV4,
 		.hooknum  = NF_INET_LOCAL_IN,

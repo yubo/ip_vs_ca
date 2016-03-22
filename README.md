@@ -4,7 +4,7 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp
 
-支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5)
+支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic)
 
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2),兼容[taobao/LVS(lvs_v2)](https://github.com/alibaba/LVS/tree/lvs_v2)
 
@@ -15,8 +15,8 @@ get ip vs(fullnat) client addr
   - [x] Support TCP
   - [x] Support UDP
   - [x] Support centos 6.6
-  - [x] Support centos 7.2
   - [x] Support centos 7.2 rpmbuild
+  - [x] Support ubuntu 14.04(trusty) dpkg
 
 ## Demo
 
@@ -31,17 +31,18 @@ lvs(fullnat) client address UDP
 #### build kmod
 ```shell
 cd src/ip_vs_ca
-make
+make -f linux.mk
 insmod ./ip_vs_ca.ko
 ```
 
-### build rpm
-ip_vs_ca kmod for centos7.2(RHEL7)
+### build rpm/deb 
 ```shell
-yum groupinstall "Development tools"
-yum install kernel-devel kernel-abi-whitelists bzip2
-make
-rpm -ivh ~/rpmbuild/RPMS/x86_64/kmod-ip_vs_ca-0.01-1.el7.centos.x86_64.rpm
+cd build
+cmake ..
+make package
+rpm -ivh ip_vs_ca-`uname -r`-0.1.0.x86_64.rpm
+#or
+dpkg -i ip_vs_ca-`uname -r`-0.1.0.x86_64.deb
 modprobe ip_vs_ca
 ```
 
