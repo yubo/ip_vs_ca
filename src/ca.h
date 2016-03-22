@@ -199,6 +199,7 @@ struct ip_vs_ca_stat_mib {
 
 struct syscall_links {
 	asmlinkage int (*getpeername) (int, struct sockaddr *, int *);
+#ifdef IP_VS_CA_ICMP
 	asmlinkage int (*accept4) (int, struct sockaddr *, int *, int);
 	asmlinkage int (*recvfrom) (int fd, void *ubuf, size_t size,
 			unsigned flags, struct sockaddr *addr, int *addr_len);
@@ -206,6 +207,7 @@ struct syscall_links {
 			unsigned int flags);
 	asmlinkage int (*recvmmsg) (int fd, struct mmsghdr *mmsg,
 			unsigned int vlen, unsigned int flags, struct timespec *timeout);
+#endif
 };
 
 struct ip_vs_ca_protocol {

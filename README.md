@@ -38,7 +38,7 @@ insmod ./ip_vs_ca.ko
 ### build rpm/deb 
 ```shell
 cd build
-cmake ..
+cmake .. #or cmake -DENABLE_ICMP=1 ..
 make package
 rpm -ivh ip_vs_ca-`uname -r`-0.1.0.x86_64.rpm
 #or

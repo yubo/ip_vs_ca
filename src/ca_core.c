@@ -12,6 +12,7 @@
 #include <asm/paravirt.h>
 #include "ca.h"
 
+
 unsigned long **sys_call_table;
 unsigned long original_cr0;
 struct syscall_links sys;
@@ -116,6 +117,7 @@ getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 	return ret;
 }
 
+#ifdef IP_VS_CA_ICMP
 asmlinkage static int
 accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 {
@@ -164,6 +166,7 @@ recvfrom(int fd, void *ubuf, size_t size,
 
 	return ret;
 }
+#endif
 
 const char *ip_vs_ca_proto_name(unsigned proto)
 {
@@ -199,11 +202,13 @@ static int ip_vs_ca_syscall_init(void)
 	write_cr0(original_cr0 & ~0x00010000);
 	IP_VS_CA_DBG("Loading ip_vs_ca module, sys call table at %p\n", sys_call_table);
 	sys.getpeername = (void *)(sys_call_table[__NR_getpeername]);
-	sys.accept4     = (void *)(sys_call_table[__NR_accept4]);
-	sys.recvfrom    = (void *)(sys_call_table[__NR_recvfrom]);
 	sys_call_table[__NR_getpeername] = (void *)getpeername;
+#ifdef IP_VS_CA_ICMP
+	sys.accept4     = (void *)(sys_call_table[__NR_accept4]);
 	sys_call_table[__NR_accept4]     = (void *)accept4;
+	sys.recvfrom    = (void *)(sys_call_table[__NR_recvfrom]);
 	sys_call_table[__NR_recvfrom]    = (void *)recvfrom;
+#endif
 	write_cr0(original_cr0);
 
 	return 0;
@@ -217,8 +222,10 @@ static void ip_vs_ca_syscall_cleanup(void)
 
 	write_cr0(original_cr0 & ~0x00010000);
 	sys_call_table[__NR_getpeername] = (void *)sys.getpeername;
+#ifdef IP_VS_CA_ICMP
 	sys_call_table[__NR_accept4]     = (void *)sys.accept4;
 	sys_call_table[__NR_recvfrom]    = (void *)sys.recvfrom;
+#endif
 	write_cr0(original_cr0);
 	//msleep(100);
 	sys_call_table = NULL;
@@ -275,6 +282,9 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 	}
 
 	if (iph.protocol == IPPROTO_ICMP) {
+#ifndef IP_VS_CA_ICMP
+		return NF_ACCEPT;
+#else
 		struct iphdr *ih;
 		struct icmphdr _icmph, *icmph;
 		struct ipvs_ca _ca, *ca;
@@ -339,6 +349,7 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 					icmph->un.echo.sequence);
 			goto out;
 		}
+#endif
 	}else if (iph.protocol == IPPROTO_TCP) {
 		/* Protocol supported? */
 		pp = ip_vs_ca_proto_get(iph.protocol);
