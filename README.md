@@ -30,7 +30,7 @@ lvs(fullnat) client address UDP
 
 #### build kmod
 ```shell
-cd src/ip_vs_ca
+cd src
 make -f linux.mk
 insmod ./ip_vs_ca.ko
 ```
