@@ -25,4 +25,6 @@ _CPack_Packages/
 CMakeFiles/
 CMakeCache.txt
 install_manifest.txt
+Kbuild
+Kbuild.ccflags
 

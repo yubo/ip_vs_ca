@@ -10,7 +10,7 @@
 #include <net/icmp.h>		/* for icmp_send */
 
 #define IP_VS_CA_VERSION "0.0.1"
-#define IP_VS_CA_DEBUG
+/*#define IP_VS_CA_DEBUG*/
 
 #define IP_VS_CA_CONN_TAB_BITS     8
 #define IP_VS_CA_CONN_TAB_SIZE     (1 << IP_VS_CA_CONN_TAB_BITS)
