@@ -10,6 +10,11 @@ get ip vs(fullnat) client addr
 
 支持taobao/lvs_v2版本的tcp opt报文格式，新加入了icmp echo报文(payload),实现了tcp/udp local - client 地址对应关系的通告
 
+[lvs官网](http://linuxvirtualserver.org/)在2012年8月放出了fullnat第一个版本，其中的 TCPOPT_ADDR 为 200，之后ali的github上放出的，改为了254，导致有些版本兼容的问题，可确认tcpopt的值后，修改src/ca.h的相应字段
+
+ - kernel include/net/ip_vs.h
+ - ip_vs_ca src/ca.h
+
 ## Feature
   - [x] Build as a module
   - [x] Support TCP
