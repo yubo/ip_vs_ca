@@ -107,7 +107,7 @@ static __u64 get_ip_vs_ca_data(struct tcphdr *th)
 					if (opsize > length)
 						/* don't parse partial options */
 						return 0;
-					if (TCPOPT_ADDR == opcode &&
+					if (tcpopt_addr == opcode &&
 							TCPOLEN_ADDR == opsize) {
 						memcpy(&tdata.data, ptr - 2, sizeof(tdata.data));
 #if 0

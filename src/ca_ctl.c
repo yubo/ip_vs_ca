@@ -8,13 +8,16 @@
  * Copyright (C) 2016 yubo@yubo.org
  * 2016-02-14
  */
-
 #include "ca.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+#include <linux/proc_fs.h>
+#define USE_PROC_CTREATE1
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 #define USE_PROC_CTREATE
 #endif
 
+int tcpopt_addr = 254;
 struct ip_vs_ca_stat_mib *ext_stats;
 
 #ifdef USE_PROC_CTREATE
@@ -22,6 +25,8 @@ static struct proc_dir_entry *ca_stats;
 #endif
 static struct ctl_table_header *sysctl_header;
 extern int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1];
+static int tcpopt_addr_min = 0;
+static int tcpopt_addr_max = 255;
 
 /*
  *	IPVS sysctl table (under the /proc/sys/net/ca/)
@@ -30,18 +35,27 @@ extern int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1];
  */
 static struct ctl_table vs_vars[] = {
 	{
-	 .procname = "tcp_timeout",
-	 .data = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_TCP],
-	 .maxlen = sizeof(int),
-	 .mode = 0644,
+	 .procname     = "tcp_timeout",
+	 .data         = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_TCP],
+	 .maxlen       = sizeof(int),
+	 .mode         = 0644,
 	 .proc_handler = proc_dointvec_jiffies,
 	 },
 	{
-	 .procname = "udp_timeout",
-	 .data = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_UDP],
-	 .maxlen = sizeof(int),
-	 .mode = 0644,
+	 .procname     = "udp_timeout",
+	 .data         = &sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_UDP],
+	 .maxlen       = sizeof(int),
+	 .mode         = 0644,
 	 .proc_handler = proc_dointvec_jiffies,
+	 },
+	{
+	 .procname     = "tcpopt_addr",
+	 .data         = &tcpopt_addr,
+	 .maxlen       = sizeof(int),
+	 .mode         = 0644,
+	 .proc_handler = proc_dointvec_minmax,
+	 .extra1       = &tcpopt_addr_min,
+	 .extra2       = &tcpopt_addr_max,
 	 },
 	{.procname = 0}
 };
@@ -121,7 +135,10 @@ int __init ip_vs_ca_control_init(void){
 	if (NULL == ext_stats)
 		return 1;
 
-#ifdef USE_PROC_CTREATE
+
+#ifdef USE_PROC_CTREATE1
+	proc_create("ip_vs_ca_stats", 0, init_net.proc_net, &ip_vs_ca_stats_fops);
+#elif def USE_PROC_CTREATE
 	ca_stats = proc_create("ip_vs_ca_stats", 0, init_net.proc_net, &ip_vs_ca_stats_fops);
 #else
 	proc_net_fops_create(&init_net, "ip_vs_ca_stats", 0, &ip_vs_ca_stats_fops);
@@ -136,7 +153,9 @@ void ip_vs_ca_control_cleanup(void)
 {
 	synchronize_net();
 	unregister_sysctl_table(sysctl_header);
-#ifdef USE_PROC_CTREATE
+#ifdef USE_PROC_CTREATE1
+	remove_proc_entry("ip_vs_ca_stats", init_net.proc_net);
+#elif def USE_PROC_CTREATE
 	proc_remove(ca_stats);
 #else
 	proc_net_remove(&init_net, "ip_vs_ca_stats");

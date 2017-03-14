@@ -337,7 +337,7 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 			}
 
 			if(ca->code != 123
-					|| ca->toa.opcode != TCPOPT_ADDR
+					|| ca->toa.opcode != tcpopt_addr
 					|| ca->toa.opsize != TCPOLEN_ADDR){
 				IP_VS_CA_DBG("ca not hit. {.code:%d, .protocol:%d,"
 						" .toa.opcode:%d, .toa.opsize:%d}\n",
@@ -406,7 +406,9 @@ out:
 static struct nf_hook_ops ip_vs_ca_ops[] __read_mostly = { 
 	{
 		.hook     = (nf_hookfn *)ip_vs_ca_in_hook,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 		.owner    = THIS_MODULE,
+#endif
 		.pf       = NFPROTO_IPV4,
 		.hooknum  = NF_INET_LOCAL_IN,
 		.priority = NF_IP_PRI_CONNTRACK_CONFIRM,

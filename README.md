@@ -4,13 +4,13 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp
 
-支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic)
+支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic) / ubuntu16.04(linux 4.4.0-64-generic)
 
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2),兼容[taobao/LVS(lvs_v2)](https://github.com/alibaba/LVS/tree/lvs_v2)
 
 支持taobao/lvs_v2版本的tcp opt报文格式，新加入了icmp echo报文(payload),实现了tcp/udp local - client 地址对应关系的通告
 
-[lvs官网](http://linuxvirtualserver.org/)在2012年8月放出了fullnat第一个版本，其中的 TCPOPT_ADDR 为 200，之后ali的github上放出的，改为了254，导致有些版本兼容的问题，可确认tcpopt的值后，修改src/ca.h的相应字段
+[lvs官网](http://linuxvirtualserver.org/)在2012年8月放出了fullnat第一个版本，其中的 TCPOPT_ADDR 为 200，之后ali的github上放出的，改为了254，导致有些版本兼容的问题，可确认tcpopt的值后，修改 /proc/sys/net/ca/tcpopt_addr
 
  - kernel include/net/ip_vs.h
  - ip_vs_ca src/ca.h
@@ -22,6 +22,7 @@ get ip vs(fullnat) client addr
   - [x] Support centos 6.6
   - [x] Support centos 7.2 rpmbuild
   - [x] Support ubuntu 14.04(trusty) dpkg
+  - [x] Support ubuntu 16.04.2(xenial) dpkg
 
 ## Demo
 
@@ -56,6 +57,7 @@ modprobe ip_vs_ca
 可以通过修改以下文件来设置连接超时回收的时间
    - /proc/sys/net/ca/tcp_timeout (defualt 90s)
    - /proc/sys/net/ca/udp_timeout (defualt 180s)
+   - /proc/sys/net/ca/tcpopt_addr (defualt 254)
 
 ## Udpd example
 

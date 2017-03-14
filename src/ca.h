@@ -58,7 +58,8 @@
 
 #endif
 
-#define TCPOPT_ADDR  254
+/*#define TCPOPT_ADDR  254*/
+extern int tcpopt_addr;
 /* MUST be 4n !!!! */
 #define TCPOLEN_ADDR 8		/* |opcode|size|ip+port| = 1 + 1 + 6 */
 
