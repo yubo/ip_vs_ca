@@ -23,30 +23,39 @@ struct syscall_links sys;
 
 static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int append)
 {
-	int err, len;
-	struct socket *sock;
+	int err, len, ret = 0;
+	struct socket *sock = NULL;
 	struct sockaddr_in sin[2];
 	union nf_inet_addr addr;
 	struct ip_vs_ca_conn *cp;
 
 	err = get_user(len, ulen);
-	if (err)
-		return 1;
+	if (err){
+		ret = 1;
+		goto out;
+	}
 
 	if (len != sizeof(struct sockaddr_in)){
-		return 2;
+		ret = 2;
+		goto out;
 	}
 
 	err = copy_from_user(sin, uaddr, len);
-	if (err)
-		return 3;
+	if (err){
+		ret = 3;
+		goto out;
+	}
 
-	if (sin[0].sin_family != AF_INET)
-		return 4;
+	if (sin[0].sin_family != AF_INET){
+		ret = 4;
+		goto out;
+	}
 
 	sock = sockfd_lookup(fd, &err);
-	if (!sock)
-		return 5;
+	if (!sock){
+		ret = 5;
+		goto out;
+	}
 
 	IP_VS_CA_DBG("%s called, sin{.family:%d, .port:%d, addr:%pI4} sock.type:%d\n",
 			__func__, sin[0].sin_family, ntohs(sin[0].sin_port),
@@ -59,7 +68,8 @@ static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int 
 	}else if(sock->type == SOCK_DGRAM){
 		cp = ip_vs_ca_conn_get(sin[0].sin_family, IPPROTO_UDP, &addr, sin[0].sin_port);
 	}else{
-		return 6;
+		ret = 6;
+		goto out;
 	}
 
 	IP_VS_CA_DBG("lookup type:%d %pI4:%d %s\n",
@@ -67,8 +77,10 @@ static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int 
 				&addr.ip, ntohs(sin[0].sin_port),
 				cp ? "hit" : "not hit");
 
-	if (!cp)
-		return 7;
+	if (!cp){
+		ret = 7;
+		goto out;
+	}
 
 	IP_VS_CA_DBG("%s called, %d %pI4:%d(%pI4:%d)->%pI4:%d\n",
 			__func__, cp->protocol,
@@ -81,19 +93,29 @@ static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int 
 		sin[1].sin_port = cp->o_port;
 		ip_vs_ca_conn_put(cp);
 		IP_VS_CA_DBG("copy_to_user\n");
-		if(copy_to_user(uaddr, sin, 2*len))
-			return 8;
+		if(copy_to_user(uaddr, sin, 2*len)){
+			ret = 8;
+			goto out;
+		}
 		IP_VS_CA_DBG("put_user\n");
-		if (put_user(2*len, ulen))
-			return 9;
+		if (put_user(2*len, ulen)){
+			ret = 9;
+			goto out;
+		}
 	}else{
 		sin[0].sin_addr.s_addr = cp->o_addr.ip;
 		sin[0].sin_port = cp->o_port;
 		ip_vs_ca_conn_put(cp);
-		if(copy_to_user(uaddr, sin, len))
-			return 8;
+		if(copy_to_user(uaddr, sin, len)) {
+			ret = 10;
+			goto out;
+		}
 	}
-	return 0;
+
+out:
+	if (sock && sock->file)
+		sockfd_put(sock);
+	return ret;
 }
 
 /*
