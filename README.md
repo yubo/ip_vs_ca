@@ -4,7 +4,7 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp
 
-支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic) / ubuntu16.04(linux 4.4.0-64-generic)
+支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic) / ubuntu16.04(linux 4.4.0-64-generic) / centos7.2(linux 4.9.2-1.el7)
 
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2),兼容[taobao/LVS(lvs_v2)](https://github.com/alibaba/LVS/tree/lvs_v2)
 
@@ -43,6 +43,7 @@ insmod ./ip_vs_ca.ko
 
 ### build rpm/deb 
 ```shell
+## install cmake-3.2.1
 cd build
 cmake ..
 #cmake -DENABLE_ICMP=1 -DENABLE_DEBUG=1 ..

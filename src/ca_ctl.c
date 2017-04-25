@@ -17,7 +17,7 @@
 #define USE_PROC_CTREATE
 #endif
 
-int tcpopt_addr = 254;
+int tcpopt_addr = 200;
 struct ip_vs_ca_stat_mib *ext_stats;
 
 #ifdef USE_PROC_CTREATE
@@ -138,7 +138,7 @@ int __init ip_vs_ca_control_init(void){
 
 #ifdef USE_PROC_CTREATE1
 	proc_create("ip_vs_ca_stats", 0, init_net.proc_net, &ip_vs_ca_stats_fops);
-#elif def USE_PROC_CTREATE
+#elif defined USE_PROC_CTREATE
 	ca_stats = proc_create("ip_vs_ca_stats", 0, init_net.proc_net, &ip_vs_ca_stats_fops);
 #else
 	proc_net_fops_create(&init_net, "ip_vs_ca_stats", 0, &ip_vs_ca_stats_fops);
@@ -155,7 +155,7 @@ void ip_vs_ca_control_cleanup(void)
 	unregister_sysctl_table(sysctl_header);
 #ifdef USE_PROC_CTREATE1
 	remove_proc_entry("ip_vs_ca_stats", init_net.proc_net);
-#elif def USE_PROC_CTREATE
+#elif defined USE_PROC_CTREATE
 	proc_remove(ca_stats);
 #else
 	proc_net_remove(&init_net, "ip_vs_ca_stats");
