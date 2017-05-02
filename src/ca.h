@@ -9,7 +9,7 @@
 #include <net/ipv6.h>		/* for ipv6_addr_copy */
 #include <net/icmp.h>		/* for icmp_send */
 
-#define IP_VS_CA_VERSION "0.0.1"
+#define IP_VS_CA_VERSION "0.0.2"
 /*#define IP_VS_CA_DEBUG*/
 
 #define IP_VS_CA_CONN_TAB_BITS     8

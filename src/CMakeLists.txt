@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 
-#add_definitions(-g -O2 -fsigned-char -freg-struct-return -Wall -W 
-#	-Wshadow -Wstrict-prototypes -Wpointer-arith -Wcast-qual -Winline -Werror)
-
-if(DEFINED ENABLE_ICMP)
-	message(STATUS "ENABLE_ICMP: ${ENABLE_ICMP}")
+if(NOT DEFINED DISABLE_ICMP)
+	message(STATUS "ENABLE ICMP")
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DIP_VS_CA_ICMP")
 endif()
 

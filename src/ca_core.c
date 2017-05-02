@@ -17,10 +17,6 @@ unsigned long **sys_call_table;
 unsigned long original_cr0;
 struct syscall_links sys;
 
-//asmlinkage int (*_getpeername) (int, struct sockaddr *, int *);
-//asmlinkage int (*_accept4) (int, struct sockaddr *, int *, int);
-// recvmsg recvfrom
-
 static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int append)
 {
 	int err, len, ret = 0;
