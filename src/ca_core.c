@@ -117,7 +117,7 @@ out:
 /*
  * ./net/socket.c:1624
  */
-asmlinkage static int
+asmlinkage static long
 getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 {
 	int ret, err;
@@ -135,7 +135,7 @@ getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 	return ret;
 }
 
-asmlinkage static int
+asmlinkage static long
 accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 {
 	int ret, err;
@@ -143,8 +143,10 @@ accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 	IP_VS_CA_DBG("accept4 called\n");
 
 	ret = sys.accept4(fd, upeer_sockaddr, upeer_addrlen, flags);
-	if (ret < 0)
+	if (ret < 0){
+		IP_VS_CA_DBG("accept4 (%d, %p, %d, %d) ret:%d\n", fd, upeer_sockaddr, *upeer_addrlen, flags, ret);
 		return ret;
+	}
 
 	err = ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen, 0);
 	if (err)
@@ -153,7 +155,7 @@ accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 	return ret;
 }
 
-asmlinkage static int
+asmlinkage static long
 recvfrom(int fd, void *ubuf, size_t size,
 			unsigned flags, struct sockaddr *addr, int *addr_len){
 	int l1, l2, ret, err;
