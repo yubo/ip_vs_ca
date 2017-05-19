@@ -10,7 +10,7 @@
  */
 #include "ca.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0)
 #include <linux/proc_fs.h>
 #define USE_PROC_CTREATE1
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
