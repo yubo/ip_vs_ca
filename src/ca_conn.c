@@ -126,11 +126,11 @@ static inline int ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp)
 	if (cp->flags & IP_VS_CA_CONN_F_ONE_PACKET)
 		return 0;
 
-	hash =
-	    ip_vs_ca_conn_hashkey(cp->af, cp->protocol, &cp->s_addr, cp->s_port);
-	ct_write_lock(hash);
+	hash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
+			&cp->s_addr, cp->s_port);
+	ct_write_lock_bh(hash);
 	ret = __ip_vs_ca_conn_hash(cp, hash);
-	ct_write_unlock(hash);
+	ct_write_unlock_bh(hash);
 
 	return ret;
 }
@@ -149,7 +149,7 @@ static inline int ip_vs_ca_conn_unhash(struct ip_vs_ca_conn *cp)
 	    ip_vs_ca_conn_hashkey(cp->af, cp->protocol, &cp->s_addr, cp->s_port);
 
 	/* locked */
-	ct_write_lock(hash);
+	ct_write_lock_bh(hash);
 
 	/* unhashed */
 	if ((cp->flags & IP_VS_CA_CONN_F_HASHED)
@@ -161,7 +161,7 @@ static inline int ip_vs_ca_conn_unhash(struct ip_vs_ca_conn *cp)
 	} else {
 		ret = 0;
 	}
-	ct_write_unlock(hash);
+	ct_write_unlock_bh(hash);
 
 	return ret;
 }
