@@ -289,9 +289,11 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 	 *      Don't handle local packets on IPv6 for now
 	 */
 	if (unlikely(skb->pkt_type != PACKET_HOST)) {
+		/*
 		IP_VS_CA_DBG("packet type=%d proto=%d daddr=%pI4 ignored\n",
 				skb->pkt_type,
 				iph.protocol, &iph.daddr.ip);
+		*/
 		goto out;
 	}
 
@@ -357,10 +359,13 @@ static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 		}else{
 			IP_VS_CA_DBG("icmphdr not hit tot_len:%d, "
 					"icmp{.type:%d, .code:%d .echo.id:0x%04x,"
-					" .echo.sequence:%d}\n", 
+					" .echo.sequence:%d}\n"
+					"want tot_len:%lu icmp.type:%d\n", 
 					ntohs(ih->tot_len), icmph->type,
 					icmph->code, icmph->un.echo.id,
-					icmph->un.echo.sequence);
+					icmph->un.echo.sequence,
+					sizeof(*ih)+sizeof(*icmph)+sizeof(*ca),
+					ICMP_ECHO);
 			goto out;
 		}
 #endif

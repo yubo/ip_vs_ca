@@ -142,7 +142,7 @@ struct ip_vs_tcpo_addr {
 	__u8 opsize;
 	__u16 port;
 	__u32 addr;
-};
+} __attribute__((__packed__));
 
 
 struct ipvs_ca {
@@ -151,7 +151,7 @@ struct ipvs_ca {
 	__be16 sport;
 	__be16 dport;
 	struct ip_vs_tcpo_addr toa;
-};
+} __attribute__((__packed__));
 
 union ip_vs_ca_data {
 	__u64 data;

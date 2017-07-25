@@ -27,7 +27,7 @@ static unsigned int ip_vs_ca_conn_rnd;
 /*
  *  Fine locking granularity for big connection hash table
  */
-#define CT_LOCKARRAY_BITS  8
+#define CT_LOCKARRAY_BITS  16
 #define CT_LOCKARRAY_SIZE  (1<<CT_LOCKARRAY_BITS)
 #define CT_LOCKARRAY_MASK  (CT_LOCKARRAY_SIZE-1)
 
