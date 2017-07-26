@@ -80,6 +80,8 @@ struct ip_vs_ca_stats_entry ip_vs_ca_stats[] = {
 	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_mismatch", GETNAME_IP_VS_CA_MISMATCH_CNT),
 	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_bypass", GETNAME_IP_VS_CA_BYPASS_CNT),
 	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_empty", GETNAME_IP_VS_CA_EMPTY_CNT),
+	IP_VS_CA_STAT_ITEM("conn_new", CONN_NEW_CNT),
+	IP_VS_CA_STAT_ITEM("conn_del", CONN_DEL_CNT),
 	IP_VS_CA_STAT_END
 };
 
@@ -92,6 +94,7 @@ static int ip_vs_ca_stats_show(struct seq_file *seq, void *v)
 	int i, j, cpu_nr;
 
 	/* print CPU first */
+	seq_printf(seq, "IP_VS_CA(%s)\n", IP_VS_CA_VERSION);
 	seq_printf(seq, "                                  ");
 	cpu_nr = num_possible_cpus();
 	for (i = 0; i < cpu_nr; i++)
