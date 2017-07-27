@@ -17,7 +17,7 @@ do { \
 int main(int argc, char *argv[])
 {
 	int sock, on;
-	struct sockaddr_in servaddr, peeraddr[2];
+	struct sockaddr_in servaddr, peeraddr;
 	char recvbuf[1024] = {0};
 	socklen_t peerlen;
 	int n;
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 		peerlen = sizeof(peeraddr);
 		memset(recvbuf, 0, sizeof(recvbuf));
 		n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
-				(struct sockaddr *)peeraddr, &peerlen);
+				(struct sockaddr *)&peeraddr, &peerlen);
 		if(n == -1) {
 
 			if (errno == EINTR)
@@ -56,12 +56,7 @@ int main(int argc, char *argv[])
 
 			ERR_EXIT("recvfrom error");
 		}else if(n > 0) {
-			if(peerlen == sizeof(struct sockaddr_in)){
-				printf("recv %d %s:%d\n", peerlen, inet_ntoa(peeraddr[0].sin_addr), ntohs(peeraddr[0].sin_port));
-			}else if(peerlen == sizeof(peeraddr)){
-				printf("recv %d %s:%d", peerlen, inet_ntoa(peeraddr[0].sin_addr), ntohs(peeraddr[0].sin_port));
-				printf("(%s:%d)\n", inet_ntoa(peeraddr[1].sin_addr), ntohs(peeraddr[1].sin_port));
-			}
+			printf("recv %d %s:%d\n", peerlen, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
 			fputs(recvbuf, stdout);
 		}
 	}

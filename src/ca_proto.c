@@ -23,9 +23,9 @@ enum {
 };
 
 int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1] = {
-	[IP_VS_CA_S_TCP] = 90 * HZ,
-	[IP_VS_CA_S_UDP] = 3 * 60 * HZ,
-	[IP_VS_CA_S_LAST] = 2 * HZ,
+	[IP_VS_CA_S_TCP]  = 90 * HZ,
+	[IP_VS_CA_S_UDP]  =  3 * 60 * HZ,
+	[IP_VS_CA_S_LAST] =  2 * HZ,
 };
 
 static struct ip_vs_ca_protocol *ip_vs_ca_proto_table[IP_VS_CA_PROTO_TAB_SIZE];
@@ -42,7 +42,7 @@ static struct ip_vs_ca_conn *tcpudp_conn_get(int af, const struct sk_buff *skb,
 		return NULL;
 
 	return ip_vs_ca_conn_get(af, iph->protocol,
-			&iph->saddr, pptr[0]);
+			&iph->saddr, pptr[0], IP_VS_CA_IN);
 }
 
 static int tcpudp_icmp_process(int af, struct sk_buff *skb,
@@ -61,11 +61,11 @@ static int tcpudp_icmp_process(int af, struct sk_buff *skb,
 			skb);
 	if (*cpp == NULL){
 		goto out;
-	} else{
-		ip_vs_ca_conn_put(*cpp);
-		*verdict = NF_ACCEPT;
-		return 0;
-	}
+	} 
+
+	ip_vs_ca_conn_put(*cpp);
+	*verdict = NF_ACCEPT;
+	return 0;
 
 out:
 	*cpp = NULL;
@@ -87,42 +87,44 @@ static __u64 get_ip_vs_ca_data(struct tcphdr *th)
 	union ip_vs_ca_data tdata;
 	unsigned char *ptr;
 
-	if (NULL != th) {
-		length = (th->doff * 4) - sizeof(struct tcphdr);
-		ptr = (unsigned char *) (th + 1);
+	if (th == NULL) {
+		return 0;
+	}
 
-		while (length > 0) {
-			int opcode = *ptr++;
-			int opsize;
-			switch (opcode) {
-				case TCPOPT_EOL:
-					return 0;
-				case TCPOPT_NOP:	/* Ref: RFC 793 section 3.1 */
-					length--;
-					continue;
-				default:
-					opsize = *ptr++;
-					if (opsize < 2)	/* "silly options" */
-						return 0;
-					if (opsize > length)
-						/* don't parse partial options */
-						return 0;
-					if (tcpopt_addr == opcode &&
-							TCPOLEN_ADDR == opsize) {
-						memcpy(&tdata.data, ptr - 2, sizeof(tdata.data));
+	length = (th->doff * 4) - sizeof(struct tcphdr);
+	ptr = (unsigned char *) (th + 1);
+
+	while (length > 0) {
+		int opcode = *ptr++;
+		int opsize;
+		switch (opcode) {
+		case TCPOPT_EOL:
+			return 0;
+		case TCPOPT_NOP:	/* Ref: RFC 793 section 3.1 */
+			length--;
+			continue;
+		default:
+			opsize = *ptr++;
+			if (opsize < 2)	/* "silly options" */
+				return 0;
+			if (opsize > length)
+				/* don't parse partial options */
+				return 0;
+			if (tcpopt_addr == opcode &&
+					TCPOLEN_ADDR == opsize) {
+				memcpy(&tdata.data, ptr - 2, sizeof(tdata.data));
 #if 0
-						IP_VS_CA_DBG("find toa data: ip = "
-								"%pI4, port = %u\n",
-								&tdata.tcp.addr,
-								ntohs(tdata.tcp.port));
-						IP_VS_CA_DBG("coded toa data: %llx\n",
-								tdata.data);
+				IP_VS_CA_DBG("find toa data: ip = "
+						"%pI4, port = %u\n",
+						&tdata.tcp.addr,
+						ntohs(tdata.tcp.port));
+				IP_VS_CA_DBG("coded toa data: %llx\n",
+						tdata.data);
 #endif
-						return tdata.data;
-					}
-					ptr += opsize - 2;
-					length -= opsize;
+				return tdata.data;
 			}
+			ptr += opsize - 2;
+			length -= opsize;
 		}
 	}
 	return 0;
@@ -156,15 +158,15 @@ tcp_skb_process(int af, struct sk_buff *skb, struct ip_vs_ca_protocol *pp,
 				skb);
 		if (*cpp == NULL){
 			goto out;
-		} else{
-			ip_vs_ca_conn_put(*cpp);
-			*verdict = NF_ACCEPT;
-			return 0;
 		}
-	}else{
-		IP_VS_CA_INC_STATS(ext_stats, SYN_RECV_SOCK_NO_IP_VS_CA_CNT);
-		goto out;
+
+		ip_vs_ca_conn_put(*cpp);
+		*verdict = NF_ACCEPT;
+		return 0;
 	}
+
+	IP_VS_CA_INC_STATS(ext_stats, SYN_RECV_SOCK_NO_IP_VS_CA_CNT);
+	goto out;
 
 out:
 	*cpp = NULL;

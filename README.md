@@ -54,10 +54,43 @@ modprobe ip_vs_ca
 ```
 
 ### proc sys ctl
+
 可以通过修改以下文件来设置连接超时回收的时间
-   - /proc/sys/net/ca/tcp_timeout (defualt 90s)
-   - /proc/sys/net/ca/udp_timeout (defualt 180s)
-   - /proc/sys/net/ca/tcpopt_addr (defualt 200)
+
+- /proc/sys/net/ca/tcp_timeout (defualt 90s)
+- /proc/sys/net/ca/udp_timeout (defualt 180s)
+- /proc/sys/net/ca/tcpopt_addr (defualt 200)
+
+查看计数器和版本信息
+
+- /proc/net/ip_vs_ca_stats
+
+## syscall
+
+#### tx
+
+修改了 tx 方向的相关系统调用的地址修改，当对 client ip:port 访问时，会转换成 lvs lcoal ip:port
+
+- sendto()
+- connect()
+
+#### rx
+
+修改了 rx 方向的系统调用函数，当访问lvs fnat方式转发的数据时，lvs local ip:port 会转换成 client ip:port
+
+- accept()
+- accept4()
+- recvfrom()
+- getpeername()
+
+
+#### other
+
+在获取 remote addr时，以`recvfrom(sock, recvbuf, sizeof(recvbuf), 0, (struct sockaddr *)&addr, &len)`为例, 传入的地址类型和长度需要符合以下条件
+
+- `len == sizeof(struct sockaddr_in)`
+- `((struct sockaddr_in *)&addr)->sin_family == AF_INET`
+
 
 ## Udpd example
 
@@ -65,23 +98,15 @@ modprobe ip_vs_ca
 
 ```c
 	char recvbuf[1024] = {0};
-	struct sockaddr_in peeraddr[2];
+	struct sockaddr_in peeraddr;
 	socklen_t peerlen;
 	int n;
 
 	peerlen = sizeof(peeraddr);
 	n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
-			(struct sockaddr *)peeraddr, &peerlen);
-	if(peerlen == sizeof(struct sockaddr_in)){
-		printf("recv %d %s:%d\n", peerlen,
-			inet_ntoa(peeraddr[0].sin_addr),
-			ntohs(peeraddr[0].sin_port));
-	}else if(peerlen == sizeof(peeraddr)){
-		printf("recv %d %s:%d", peerlen,
-			inet_ntoa(peeraddr[0].sin_addr),
-			ntohs(peeraddr[0].sin_port));
-		printf("(%s:%d)\n",
-			inet_ntoa(peeraddr[1].sin_addr),
-			ntohs(peeraddr[1].sin_port));
+			(struct sockaddr *)&peeraddr, &peerlen);
+	printf("recv %d %s:%d\n", peerlen,
+		inet_ntoa(peeraddr.sin_addr),
+		ntohs(peeraddr.sin_port));
 	}
 ```

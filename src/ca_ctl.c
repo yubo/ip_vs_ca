@@ -76,10 +76,6 @@ EXPORT_SYMBOL_GPL(net_vs_ctl_path);
 struct ip_vs_ca_stats_entry ip_vs_ca_stats[] = {
 	IP_VS_CA_STAT_ITEM("syn_recv_sock_ip_vs_ca", SYN_RECV_SOCK_IP_VS_CA_CNT),
 	IP_VS_CA_STAT_ITEM("syn_recv_sock_no_ip_vs_ca", SYN_RECV_SOCK_NO_IP_VS_CA_CNT),
-	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_ok", GETNAME_IP_VS_CA_OK_CNT),
-	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_mismatch", GETNAME_IP_VS_CA_MISMATCH_CNT),
-	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_bypass", GETNAME_IP_VS_CA_BYPASS_CNT),
-	IP_VS_CA_STAT_ITEM("getname_ip_vs_ca_empty", GETNAME_IP_VS_CA_EMPTY_CNT),
 	IP_VS_CA_STAT_ITEM("conn_new", CONN_NEW_CNT),
 	IP_VS_CA_STAT_ITEM("conn_del", CONN_DEL_CNT),
 	IP_VS_CA_STAT_END
@@ -92,14 +88,17 @@ struct ip_vs_ca_stats_entry ip_vs_ca_stats[] = {
 static int ip_vs_ca_stats_show(struct seq_file *seq, void *v)
 {
 	int i, j, cpu_nr;
+	char buff[10];
 
 	/* print CPU first */
 	seq_printf(seq, "IP_VS_CA(%s)\n", IP_VS_CA_VERSION);
-	seq_printf(seq, "                                  ");
+	seq_printf(seq, "%-25s ", "");
 	cpu_nr = num_possible_cpus();
 	for (i = 0; i < cpu_nr; i++)
-		if (cpu_online(i))
-			seq_printf(seq, "CPU%d       ", i);
+		if (cpu_online(i)){
+			sprintf(buff, "CPU%d", i);
+			seq_printf(seq, " %10s", buff);
+		}
 	seq_putc(seq, '\n');
 
 	i = 0;
@@ -107,7 +106,7 @@ static int ip_vs_ca_stats_show(struct seq_file *seq, void *v)
 		seq_printf(seq, "%-25s:", ip_vs_ca_stats[i].name);
 		for (j = 0; j < cpu_nr; j++) {
 			if (cpu_online(j)) {
-				seq_printf(seq, "%10lu ", *(
+				seq_printf(seq, " %10lu", *(
 					((unsigned long *) per_cpu_ptr(
 					ext_stats, j)) + ip_vs_ca_stats[i].entry
 					));

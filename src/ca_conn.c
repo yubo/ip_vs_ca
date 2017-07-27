@@ -13,7 +13,8 @@
 #include <net/net_namespace.h>
 #include "ca.h"
 
-static struct list_head *ip_vs_ca_conn_tab;
+static struct list_head *ip_vs_ca_conn_tab_s;
+static struct list_head *ip_vs_ca_conn_tab_c;
 
 /*  SLAB cache for IP_VS_CA connections */
 static struct kmem_cache *ip_vs_ca_conn_cachep __read_mostly;
@@ -61,16 +62,62 @@ static unsigned int ip_vs_ca_conn_hashkey(int af, unsigned proto,
 }
 
 /*
+ * Lock two buckets of ip_vs_ca_conn_tab
+ */
+static inline void ct_lock2(unsigned shash, unsigned chash)
+{
+	unsigned slock, clock;
+
+	slock = shash & CT_LOCKARRAY_MASK;
+	clock = chash & CT_LOCKARRAY_MASK;
+
+	/* lock the conntab bucket */
+	if (slock < clock) {
+		ct_lock(shash);
+		ct_lock(chash);
+	} else if (slock > clock) {
+		ct_lock(chash);
+		ct_lock(shash);
+	} else {
+		ct_lock(shash);
+	}
+}
+
+/*
+ * Unlock two buckets of ip_vs_ca_conn_tab
+ */
+static inline void ct_unlock2(unsigned shash, unsigned chash)
+{
+	unsigned slock, clock;
+
+	slock = shash & CT_LOCKARRAY_MASK;
+	clock = chash & CT_LOCKARRAY_MASK;
+
+	/* lock the conntab bucket */
+	if (slock < clock) {
+		ct_unlock(chash);
+		ct_unlock(shash);
+	} else if (slock > clock) {
+		ct_unlock(shash);
+		ct_unlock(chash);
+	} else {
+		ct_unlock(shash);
+	}
+}
+
+/*
  *  Hashed ip_vs_ca_conn into ip_vs_ca_conn_tab
  *	returns bool success.
  */
 
-static inline int __ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp, unsigned hash)
+static inline int __ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp, unsigned shash,
+		unsigned chash)
 {
 	int ret;
 
 	if (!(cp->flags & IP_VS_CA_CONN_F_HASHED)) {
-		list_add(&cp->c_list, &ip_vs_ca_conn_tab[hash]);
+		list_add(&cp->s_list, &ip_vs_ca_conn_tab_s[shash]);
+		list_add(&cp->c_list, &ip_vs_ca_conn_tab_c[chash]);
 		cp->flags |= IP_VS_CA_CONN_F_HASHED;
 		atomic_inc(&cp->refcnt);
 		ret = 1;
@@ -91,17 +138,19 @@ static inline int __ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp, unsigned hash)
 static int
 ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp)
 {
-	unsigned hash;
+	unsigned shash, chash;
 	int ret;
 
-	if (cp->flags & IP_VS_CA_CONN_F_ONE_PACKET)
-		return 0;
-
-	hash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
+	shash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
 			&cp->s_addr, cp->s_port);
-	ct_lock(hash);
-	ret = __ip_vs_ca_conn_hash(cp, hash);
-	ct_unlock(hash);
+	chash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
+			&cp->c_addr, cp->c_port);
+
+	ct_lock2(shash, chash);
+
+	ret = __ip_vs_ca_conn_hash(cp, shash, chash);
+
+	ct_unlock2(shash, chash);
 
 	return ret;
 }
@@ -114,18 +163,21 @@ ip_vs_ca_conn_hash(struct ip_vs_ca_conn *cp)
 static int
 ip_vs_ca_conn_unhash(struct ip_vs_ca_conn *cp)
 {
-	unsigned hash;
+	unsigned shash, chash;
 	int ret;
 
-	hash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
+	shash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
 			&cp->s_addr, cp->s_port);
+	chash = ip_vs_ca_conn_hashkey(cp->af, cp->protocol,
+			&cp->c_addr, cp->c_port);
 
 	/* locked */
-	ct_lock(hash);
+	ct_lock2(shash, chash);
 
 	/* unhashed */
 	if ((cp->flags & IP_VS_CA_CONN_F_HASHED)
 	    && (atomic_read(&cp->refcnt) == 2)) {
+		list_del(&cp->s_list);
 		list_del(&cp->c_list);
 		cp->flags &= ~IP_VS_CA_CONN_F_HASHED;
 		atomic_dec(&cp->refcnt);
@@ -133,7 +185,8 @@ ip_vs_ca_conn_unhash(struct ip_vs_ca_conn *cp)
 	} else {
 		ret = 0;
 	}
-	ct_unlock(hash);
+
+	ct_unlock2(shash, chash);
 
 	return ret;
 }
@@ -171,7 +224,7 @@ static void ip_vs_ca_conn_expire(unsigned long data)
 
 		IP_VS_CA_DBG("conn expire: %pI4:%d(%pI4:%d) -> %pI4:%d timer:%p\n",
 				&cp->s_addr.ip, ntohs(cp->s_port),
-				&cp->o_addr.ip, ntohs(cp->o_port),
+				&cp->c_addr.ip, ntohs(cp->c_port),
 				&cp->d_addr.ip, ntohs(cp->d_port),
 				&cp->timer);
 		kmem_cache_free(ip_vs_ca_conn_cachep, cp);
@@ -192,7 +245,7 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 					struct ip_vs_ca_protocol *pp,
 					__be32 saddr, __be16 sport,
 					__be32 daddr, __be16 dport,
-					__be32 oaddr, __be16 oport,
+					__be32 caddr, __be16 cport,
 					struct sk_buff *skb)
 {
 	struct ip_vs_ca_conn *cp;
@@ -213,9 +266,9 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 	//ip_vs_ca_addr_copy(af, &cp->saddr, saddr);
 	cp->s_addr.ip = saddr;
 	cp->s_port = sport;
-	//ip_vs_ca_addr_copy(af, &cp->oaddr, oaddr);
-	cp->o_addr.ip = oaddr;
-	cp->o_port = oport;
+	//ip_vs_ca_addr_copy(af, &cp->caddr, caddr);
+	cp->c_addr.ip = caddr;
+	cp->c_port = cport;
 	//ip_vs_ca_addr_copy(proto == IPPROTO_IP ? AF_UNSPEC : af, &cp->daddr, daddr);
 	cp->d_addr.ip = daddr;
 	cp->d_port = dport;
@@ -235,7 +288,7 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 	IP_VS_CA_DBG("conn new: proto:%u, %pI4:%d(%pI4:%d) -> %pI4:%d\n",
 			cp->protocol,
 			&cp->s_addr.ip, ntohs(cp->s_port),
-			&cp->o_addr.ip, ntohs(cp->o_port),
+			&cp->c_addr.ip, ntohs(cp->c_port),
 			&cp->d_addr.ip, ntohs(cp->d_port));
 	//LeaveFunction();
 	return cp;
@@ -244,25 +297,38 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 /*
  * just ipv4
  */
-struct ip_vs_ca_conn *ip_vs_ca_conn_get
-    (int af, __u8 protocol,
-	 const union nf_inet_addr *s_addr, __be16 s_port) {
+struct ip_vs_ca_conn *ip_vs_ca_conn_get(int af, __u8 protocol,
+	 const union nf_inet_addr *addr, __be16 port, int dir) {
 	unsigned hash;
 	struct ip_vs_ca_conn *cp;
 
-	hash = ip_vs_ca_conn_hashkey(af, protocol, s_addr, s_port);
+	hash = ip_vs_ca_conn_hashkey(af, protocol, addr, port);
 
 	ct_lock(hash);
 
-	list_for_each_entry(cp, &ip_vs_ca_conn_tab[hash], c_list) {
-		if (cp->af == af &&
-		    ip_vs_ca_addr_equal(af, s_addr, &cp->s_addr) &&
-		    s_port == cp->s_port &&
-		    protocol == cp->protocol) {
-			/* HIT */
-			atomic_inc(&cp->refcnt);
-			ct_unlock(hash);
-			return cp;
+	if (dir == IP_VS_CA_IN) {
+		list_for_each_entry(cp, &ip_vs_ca_conn_tab_s[hash], s_list) {
+			if (cp->af == af &&
+			    ip_vs_ca_addr_equal(af, addr, &cp->s_addr) &&
+			    port == cp->s_port &&
+			    protocol == cp->protocol) {
+				/* HIT */
+				atomic_inc(&cp->refcnt);
+				ct_unlock(hash);
+				return cp;
+			}
+		}
+	}else{
+		list_for_each_entry(cp, &ip_vs_ca_conn_tab_c[hash], c_list) {
+			if (cp->af == af &&
+			    ip_vs_ca_addr_equal(af, addr, &cp->c_addr) &&
+			    port == cp->c_port &&
+			    protocol == cp->protocol) {
+				/* HIT */
+				atomic_inc(&cp->refcnt);
+				ct_unlock(hash);
+				return cp;
+			}
 		}
 	}
 	ct_unlock(hash);
@@ -285,7 +351,7 @@ static void ip_vs_ca_conn_expire_now(struct ip_vs_ca_conn *cp)
 }
 
 /*
- *      Flush all the connection entries in the ip_vs_conn_tab
+ *      Flush all the connection entries in the ip_vs_ca_conn_tab
  */
 static void ip_vs_ca_conn_flush(void)
 {
@@ -299,7 +365,7 @@ flush_again:
 		 */
 		ct_lock(idx);
 
-		list_for_each_entry(cp, &ip_vs_ca_conn_tab[idx], c_list) {
+		list_for_each_entry(cp, &ip_vs_ca_conn_tab_s[idx], s_list) {
 			IP_VS_CA_DBG("del connection\n");
 			ip_vs_ca_conn_expire_now(cp);
 		}
@@ -317,9 +383,14 @@ flush_again:
 int __init ip_vs_ca_conn_init(void){
 	int idx;
 
-	ip_vs_ca_conn_tab =
-	    vmalloc(IP_VS_CA_CONN_TAB_SIZE * (sizeof(struct list_head)));
-	if (!ip_vs_ca_conn_tab)
+	ip_vs_ca_conn_tab_s = vmalloc(IP_VS_CA_CONN_TAB_SIZE *
+			(sizeof(struct list_head)));
+	if (!ip_vs_ca_conn_tab_s)
+		return -ENOMEM;
+
+	ip_vs_ca_conn_tab_c = vmalloc(IP_VS_CA_CONN_TAB_SIZE *
+			(sizeof(struct list_head)));
+	if (!ip_vs_ca_conn_tab_c)
 		return -ENOMEM;
 
 	/* Allocate ip_vs_ca_conn slab cache */
@@ -327,7 +398,8 @@ int __init ip_vs_ca_conn_init(void){
 					      sizeof(struct ip_vs_ca_conn),
 					      0, SLAB_HWCACHE_ALIGN, NULL);
 	if (!ip_vs_ca_conn_cachep) {
-		vfree(ip_vs_ca_conn_tab);
+		vfree(ip_vs_ca_conn_tab_s);
+		vfree(ip_vs_ca_conn_tab_c);
 		return -ENOMEM;
 	}
 
@@ -340,7 +412,8 @@ int __init ip_vs_ca_conn_init(void){
 		  sizeof(struct ip_vs_ca_conn));
 
 	for (idx = 0; idx < IP_VS_CA_CONN_TAB_SIZE; idx++) {
-		INIT_LIST_HEAD(&ip_vs_ca_conn_tab[idx]);
+		INIT_LIST_HEAD(&ip_vs_ca_conn_tab_s[idx]);
+		INIT_LIST_HEAD(&ip_vs_ca_conn_tab_c[idx]);
 	}
 
 	for (idx = 0; idx < CT_LOCKARRAY_SIZE; idx++) {
@@ -357,5 +430,6 @@ void ip_vs_ca_conn_cleanup(void)
 {
 	ip_vs_ca_conn_flush();
 	kmem_cache_destroy(ip_vs_ca_conn_cachep);
-	vfree(ip_vs_ca_conn_tab);
+	vfree(ip_vs_ca_conn_tab_s);
+	vfree(ip_vs_ca_conn_tab_c);
 }

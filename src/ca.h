@@ -113,7 +113,8 @@ ip_vs_ca_fill_iphdr(int af, const void *nh, struct ip_vs_ca_iphdr *iphdr)
  *	IP_VS_CA structure allocated for each connection
  */
 struct ip_vs_ca_conn {
-	struct list_head c_list;         /* hashed list heads */
+	struct list_head s_list;         /* hashed list heads for s_addr(lvs local ip) */
+	struct list_head c_list;         /* hashed list heads for client ip */
 
 	u16 af;                          /* address family */
 	__u8 protocol;                  /* Which protocol (TCP/UDP) */
@@ -122,8 +123,8 @@ struct ip_vs_ca_conn {
 	__be16 s_port;                   /* source port */
 	__be16 d_port;                   /* destination port */
 
-	union nf_inet_addr o_addr;       /* origin address */
-	__be16 o_port;                   /* origin port */
+	union nf_inet_addr c_addr;       /* origin address */
+	__be16 c_port;                   /* origin port */
 
 	atomic_t refcnt;                 /* reference count */
 	struct timer_list timer;         /* Expiration timer */
@@ -162,10 +163,6 @@ union ip_vs_ca_data {
 enum {
 	SYN_RECV_SOCK_IP_VS_CA_CNT = 1,
 	SYN_RECV_SOCK_NO_IP_VS_CA_CNT,
-	GETNAME_IP_VS_CA_OK_CNT,
-	GETNAME_IP_VS_CA_MISMATCH_CNT,
-	GETNAME_IP_VS_CA_BYPASS_CNT,
-	GETNAME_IP_VS_CA_EMPTY_CNT,
 	CONN_NEW_CNT,
 	CONN_DEL_CNT,
 	IP_VS_CA_STAT_LAST
@@ -175,6 +172,11 @@ enum {
 	IP_VS_CA_S_TCP = 0,
 	IP_VS_CA_S_UDP,
 	IP_VS_CA_S_LAST
+};
+
+enum {
+	IP_VS_CA_IN = 0,	/* in  s_addr -> c_addr */
+	IP_VS_CA_OUT		/* out c_addr -> s_addr */
 };
 
 
@@ -201,14 +203,14 @@ struct ip_vs_ca_stat_mib {
 	(per_cpu_ptr(mib, smp_processor_id())->mibs[field]++)
 
 struct syscall_links {
-	asmlinkage int (*getpeername) (int, struct sockaddr *, int *);
-	asmlinkage int (*accept4) (int, struct sockaddr *, int *, int);
-	asmlinkage int (*recvfrom) (int fd, void *ubuf, size_t size,
-			unsigned flags, struct sockaddr *addr, int *addr_len);
-	asmlinkage int (*recvmsg) (int fd, struct msghdr *msg,
-			unsigned int flags);
-	asmlinkage int (*recvmmsg) (int fd, struct mmsghdr *mmsg,
-			unsigned int vlen, unsigned int flags, struct timespec *timeout);
+	asmlinkage long (*getpeername)(int, struct sockaddr __user *, int __user *);
+	asmlinkage long (*accept4)(int, struct sockaddr __user *, int __user *, int);
+	asmlinkage long (*recvfrom)(int, void __user *, size_t, unsigned,
+				struct sockaddr __user *, int __user *);
+	asmlinkage long (*connect)(int, struct sockaddr __user *, int);
+	asmlinkage long (*accept)(int, struct sockaddr __user *, int __user *);
+	asmlinkage long (*sendto)(int, void __user *, size_t, unsigned,
+				struct sockaddr __user *, int);
 };
 
 struct ip_vs_ca_protocol {
@@ -249,7 +251,7 @@ extern void ip_vs_ca_conn_cleanup(void);
 extern void ip_vs_ca_conn_put(struct ip_vs_ca_conn *cp);
 extern void ip_vs_ca_conn_cleanup(void);
 extern struct ip_vs_ca_conn *ip_vs_ca_conn_get(int af, __u8 protocol,
-	 const union nf_inet_addr *s_addr, __be16 s_port);
+	 const union nf_inet_addr *s_addr, __be16 s_port, int dir);
 struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 					struct ip_vs_ca_protocol *pp,
 					__be32 saddr, __be16 sport,

@@ -17,110 +17,98 @@ unsigned long **sys_call_table;
 unsigned long original_cr0;
 struct syscall_links sys;
 
-static int ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int *ulen, int append)
+static void
+ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int len, int dir)
 {
-	int err, len, ret = 0;
+	int err, ret = 0;
 	struct socket *sock = NULL;
-	struct sockaddr_in sin[2];
+	struct sockaddr_in sin;
 	union nf_inet_addr addr;
 	struct ip_vs_ca_conn *cp;
 
-	err = get_user(len, ulen);
-	if (err){
-		ret = 1;
-		goto out;
-	}
-
 	if (len != sizeof(struct sockaddr_in)){
-		ret = 2;
+		ret = -1;
 		goto out;
 	}
 
-	err = copy_from_user(sin, uaddr, len);
+	err = copy_from_user(&sin, uaddr, len);
 	if (err){
-		ret = 3;
+		ret = -2;
 		goto out;
 	}
 
-	if (sin[0].sin_family != AF_INET){
-		ret = 4;
+	if (sin.sin_family != AF_INET){
+		ret = -3;
 		goto out;
 	}
 
 	sock = sockfd_lookup(fd, &err);
 	if (!sock){
-		ret = 5;
+		ret = -4;
 		goto out;
 	}
 
 	IP_VS_CA_DBG("%s called, sin{.family:%d, .port:%d, addr:%pI4} sock.type:%d\n",
-			__func__, sin[0].sin_family, ntohs(sin[0].sin_port),
-			&sin[0].sin_addr.s_addr, sock->type);
+			__func__, sin.sin_family, ntohs(sin.sin_port),
+			&sin.sin_addr.s_addr, sock->type);
 
-	addr.ip = sin[0].sin_addr.s_addr;
+	addr.ip = sin.sin_addr.s_addr;
 
 	if (sock->type == SOCK_STREAM){
-		cp = ip_vs_ca_conn_get(sin[0].sin_family, IPPROTO_TCP, &addr, sin[0].sin_port);
+		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_TCP, &addr,
+				sin.sin_port, dir);
 	}else if(sock->type == SOCK_DGRAM){
-		cp = ip_vs_ca_conn_get(sin[0].sin_family, IPPROTO_UDP, &addr, sin[0].sin_port);
+		cp = ip_vs_ca_conn_get(sin.sin_family, IPPROTO_UDP, &addr,
+				sin.sin_port, dir);
 	}else{
-		ret = 6;
+		ret = -5;
 		goto out;
 	}
 
 	IP_VS_CA_DBG("lookup type:%d %pI4:%d %s\n",
 				sock->type,
-				&addr.ip, ntohs(sin[0].sin_port),
+				&addr.ip, ntohs(sin.sin_port),
 				cp ? "hit" : "not hit");
 
 	if (!cp){
-		ret = 7;
+		ret = -6;
 		goto out;
 	}
 
 	IP_VS_CA_DBG("%s called, %d %pI4:%d(%pI4:%d)->%pI4:%d\n",
 			__func__, cp->protocol,
-			&sin[0].sin_addr.s_addr, ntohs(sin[0].sin_port),
-			&cp->o_addr.ip, ntohs(cp->o_port),
+			&sin.sin_addr.s_addr, ntohs(sin.sin_port),
+			&cp->c_addr.ip, ntohs(cp->c_port),
 			&cp->d_addr.ip, ntohs(cp->d_port));
-	if (append){
-		memcpy(&sin[1], sin, sizeof(struct sockaddr_in));
-		sin[1].sin_addr.s_addr = cp->o_addr.ip;
-		sin[1].sin_port = cp->o_port;
-		ip_vs_ca_conn_put(cp);
-		IP_VS_CA_DBG("copy_to_user\n");
-		if(copy_to_user(uaddr, sin, 2*len)){
-			ret = 8;
-			goto out;
-		}
-		IP_VS_CA_DBG("put_user\n");
-		if (put_user(2*len, ulen)){
-			ret = 9;
-			goto out;
-		}
-	}else{
-		sin[0].sin_addr.s_addr = cp->o_addr.ip;
-		sin[0].sin_port = cp->o_port;
-		ip_vs_ca_conn_put(cp);
-		if(copy_to_user(uaddr, sin, len)) {
-			ret = 10;
-			goto out;
-		}
+
+	if (dir == IP_VS_CA_IN) {
+		sin.sin_addr.s_addr = cp->c_addr.ip;
+		sin.sin_port = cp->c_port;
+	} else {
+		sin.sin_addr.s_addr = cp->s_addr.ip;
+		sin.sin_port = cp->s_port;
+	}
+	ip_vs_ca_conn_put(cp);
+	if(copy_to_user(uaddr, &sin, len)) {
+		ret = -7;
+		goto out;
 	}
 
 out:
 	if (sock && sock->file)
 		sockfd_put(sock);
-	return ret;
+
+	IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", ret);
+	return;
 }
 
 /*
  * ./net/socket.c:1624
  */
 asmlinkage static long
-getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
+getpeername(int fd, struct sockaddr __user *usockaddr, int __user *usockaddr_len)
 {
-	int ret, err;
+	int ret, len;
 
 	IP_VS_CA_DBG("getpeername called\n");
 
@@ -128,17 +116,17 @@ getpeername(int fd, struct sockaddr *usockaddr, int *usockaddr_len)
 	if (ret < 0)
 		return ret;
 
-	err = ip_vs_ca_modify_uaddr(fd, usockaddr, usockaddr_len, 0);
-	if (err)
-		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr return:%d\n", err);
+	get_user(len, usockaddr_len);
+	ip_vs_ca_modify_uaddr(fd, usockaddr, len, IP_VS_CA_IN);
 
 	return ret;
 }
 
 asmlinkage static long
-accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
+accept4(int fd, struct sockaddr __user *upeer_sockaddr,
+		int __user *upeer_addrlen, int flags)
 {
-	int ret, err;
+	int ret, len;
 
 	IP_VS_CA_DBG("accept4 called\n");
 
@@ -148,42 +136,54 @@ accept4(int fd, struct sockaddr *upeer_sockaddr, int *upeer_addrlen, int flags)
 		return ret;
 	}
 
-	err = ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, upeer_addrlen, 0);
-	if (err)
-		IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", err);
+	get_user(len, upeer_addrlen);
+	ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, len, IP_VS_CA_IN);
 
 	return ret;
 }
 
 asmlinkage static long
-recvfrom(int fd, void *ubuf, size_t size,
-			unsigned flags, struct sockaddr *addr, int *addr_len){
-	int l1, l2, ret, err;
+recvfrom(int fd, void __user *ubuf, size_t size, unsigned flags,
+				struct sockaddr __user *addr, int __user *addr_len)
+{
+	int ret, len;
 
 
 	if(addr == NULL || addr_len == NULL){
 		return sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
 	}
 
-	err = get_user(l1, addr_len);
-	if (err)
-		return -1;
 
 	ret = sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
 	if (ret < 0)
 		return ret;
 
-	err = get_user(l2, addr_len);
-	if (err)
-		return ret;
-
-	if(l1 == 2 * sizeof(struct sockaddr_in) && l2 == sizeof(struct sockaddr_in)){
-		err = ip_vs_ca_modify_uaddr(fd, addr, addr_len, 1);
-		if (err)
-			IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", err);
-	}
+	get_user(len, addr_len);
+	ip_vs_ca_modify_uaddr(fd, addr, len, IP_VS_CA_IN);
 
 	return ret;
+}
+
+asmlinkage static long
+connect(int fd, struct sockaddr __user *uservaddr, int addrlen)
+{
+	ip_vs_ca_modify_uaddr(fd, uservaddr, addrlen, IP_VS_CA_OUT);
+
+	return sys.connect(fd, uservaddr, addrlen);
+}
+
+asmlinkage static long
+accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen)
+{
+	return accept4(fd, upeer_sockaddr, upeer_addrlen, 0);
+}
+
+asmlinkage static long
+sendto(int fd, void __user *buff, size_t len, unsigned int flags,
+			struct sockaddr __user *addr, int addr_len)
+{
+	ip_vs_ca_modify_uaddr(fd, addr, addr_len, IP_VS_CA_OUT);
+	return sys.sendto(fd, buff, len, flags, addr, addr_len);
 }
 
 const char *ip_vs_ca_proto_name(unsigned proto)
@@ -219,12 +219,21 @@ static int ip_vs_ca_syscall_init(void)
 	original_cr0 = read_cr0();
 	write_cr0(original_cr0 & ~0x00010000);
 	IP_VS_CA_DBG("Loading ip_vs_ca module, sys call table at %p\n", sys_call_table);
+
 	sys.getpeername = (void *)(sys_call_table[__NR_getpeername]);
-	sys_call_table[__NR_getpeername] = (void *)getpeername;
-	sys.accept4     = (void *)(sys_call_table[__NR_accept4]);
-	sys_call_table[__NR_accept4]     = (void *)accept4;
-	sys.recvfrom    = (void *)(sys_call_table[__NR_recvfrom]);
-	sys_call_table[__NR_recvfrom]    = (void *)recvfrom;
+	sys.accept4	= (void *)(sys_call_table[__NR_accept4]);
+	sys.recvfrom	= (void *)(sys_call_table[__NR_recvfrom]);
+	sys.connect	= (void *)(sys_call_table[__NR_connect]);
+	sys.accept	= (void *)(sys_call_table[__NR_accept]);
+	sys.sendto	= (void *)(sys_call_table[__NR_sendto]);
+
+	sys_call_table[__NR_getpeername]= (void *)getpeername;
+	sys_call_table[__NR_accept4]	= (void *)accept4;
+	sys_call_table[__NR_recvfrom]	= (void *)recvfrom;
+	sys_call_table[__NR_connect]	= (void *)connect;
+	sys_call_table[__NR_accept]	= (void *)accept;
+	sys_call_table[__NR_sendto]	= (void *)sendto;
+
 	write_cr0(original_cr0);
 
 	return 0;
@@ -237,9 +246,14 @@ static void ip_vs_ca_syscall_cleanup(void)
 	}
 
 	write_cr0(original_cr0 & ~0x00010000);
+
 	sys_call_table[__NR_getpeername] = (void *)sys.getpeername;
 	sys_call_table[__NR_accept4]     = (void *)sys.accept4;
 	sys_call_table[__NR_recvfrom]    = (void *)sys.recvfrom;
+	sys_call_table[__NR_connect]     = (void *)sys.connect;
+	sys_call_table[__NR_accept]      = (void *)sys.accept;
+	sys_call_table[__NR_sendto]      = (void *)sys.sendto;
+
 	write_cr0(original_cr0);
 	//msleep(100);
 	sys_call_table = NULL;
