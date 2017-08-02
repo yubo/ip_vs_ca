@@ -94,7 +94,7 @@ modprobe ip_vs_ca
 
 ## Udpd example
 
-[udpd.c](udpd.c)
+[udpd.c](src/udpd.c)
 
 ```c
 	char recvbuf[1024] = {0};

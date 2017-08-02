@@ -17,6 +17,19 @@ unsigned long **sys_call_table;
 unsigned long original_cr0;
 struct syscall_links sys;
 
+static int
+ca_use_count_inc(void)
+{
+	return try_module_get(THIS_MODULE);
+}
+
+static void
+ca_use_count_dec(void)
+{
+	module_put(THIS_MODULE);
+}
+
+
 static void
 ip_vs_ca_modify_uaddr(int fd, struct sockaddr *uaddr, int len, int dir)
 {
@@ -99,6 +112,7 @@ out:
 		sockfd_put(sock);
 
 	IP_VS_CA_DBG("ip_vs_ca_modify_uaddr err:%d\n", ret);
+
 	return;
 }
 
@@ -110,15 +124,19 @@ getpeername(int fd, struct sockaddr __user *usockaddr, int __user *usockaddr_len
 {
 	int ret, len;
 
+	if (!ca_use_count_inc())
+		return -1;
 	IP_VS_CA_DBG("getpeername called\n");
 
 	ret = sys.getpeername(fd, usockaddr, usockaddr_len);
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	get_user(len, usockaddr_len);
 	ip_vs_ca_modify_uaddr(fd, usockaddr, len, IP_VS_CA_IN);
 
+out:
+	ca_use_count_dec();
 	return ret;
 }
 
@@ -128,48 +146,22 @@ accept4(int fd, struct sockaddr __user *upeer_sockaddr,
 {
 	int ret, len;
 
+	if (!ca_use_count_inc())
+		return -1;
 	IP_VS_CA_DBG("accept4 called\n");
 
 	ret = sys.accept4(fd, upeer_sockaddr, upeer_addrlen, flags);
 	if (ret < 0){
 		IP_VS_CA_DBG("accept4 (%d, %p, %d, %d) ret:%d\n", fd, upeer_sockaddr, *upeer_addrlen, flags, ret);
-		return ret;
+		goto out;
 	}
 
 	get_user(len, upeer_addrlen);
 	ip_vs_ca_modify_uaddr(fd, upeer_sockaddr, len, IP_VS_CA_IN);
 
+out:
+	ca_use_count_dec();
 	return ret;
-}
-
-asmlinkage static long
-recvfrom(int fd, void __user *ubuf, size_t size, unsigned flags,
-				struct sockaddr __user *addr, int __user *addr_len)
-{
-	int ret, len;
-
-
-	if(addr == NULL || addr_len == NULL){
-		return sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
-	}
-
-
-	ret = sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
-	if (ret < 0)
-		return ret;
-
-	get_user(len, addr_len);
-	ip_vs_ca_modify_uaddr(fd, addr, len, IP_VS_CA_IN);
-
-	return ret;
-}
-
-asmlinkage static long
-connect(int fd, struct sockaddr __user *uservaddr, int addrlen)
-{
-	ip_vs_ca_modify_uaddr(fd, uservaddr, addrlen, IP_VS_CA_OUT);
-
-	return sys.connect(fd, uservaddr, addrlen);
 }
 
 asmlinkage static long
@@ -179,11 +171,61 @@ accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen
 }
 
 asmlinkage static long
+recvfrom(int fd, void __user *ubuf, size_t size, unsigned flags,
+				struct sockaddr __user *addr, int __user *addr_len)
+{
+	int ret, len;
+
+	if (!ca_use_count_inc())
+		return -1;
+
+	if(addr == NULL || addr_len == NULL){
+		ret =  sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
+		goto out;
+	}
+
+
+	ret = sys.recvfrom(fd, ubuf, size, flags, addr, addr_len);
+	if (ret < 0)
+		goto out;
+
+	get_user(len, addr_len);
+	ip_vs_ca_modify_uaddr(fd, addr, len, IP_VS_CA_IN);
+
+out:
+	ca_use_count_dec();
+	return ret;
+}
+
+asmlinkage static long
+connect(int fd, struct sockaddr __user *uservaddr, int addrlen)
+{
+	int ret;
+
+	if (!ca_use_count_inc())
+		return -1;
+
+	ip_vs_ca_modify_uaddr(fd, uservaddr, addrlen, IP_VS_CA_OUT);
+	ret = sys.connect(fd, uservaddr, addrlen);
+
+	ca_use_count_dec();
+	return ret;
+}
+
+asmlinkage static long
 sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 			struct sockaddr __user *addr, int addr_len)
 {
+	int ret;
+
+	if (!ca_use_count_inc())
+		return -1;
+
 	ip_vs_ca_modify_uaddr(fd, addr, addr_len, IP_VS_CA_OUT);
-	return sys.sendto(fd, buff, len, flags, addr, addr_len);
+	ret = sys.sendto(fd, buff, len, flags, addr, addr_len);
+
+	ca_use_count_dec();
+	return ret;
 }
 
 const char *ip_vs_ca_proto_name(unsigned proto)

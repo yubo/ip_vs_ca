@@ -9,43 +9,46 @@
 #include <net/ipv6.h>		/* for ipv6_addr_copy */
 #include <net/icmp.h>		/* for icmp_send */
 
-#define IP_VS_CA_VERSION "0.1.2"
+#ifndef IP_VS_CA_VERSION
+#define IP_VS_CA_VERSION "0.1.*"
+#endif
+
 /*#define IP_VS_CA_DEBUG*/
 
 #define IP_VS_CA_CONN_TAB_BITS     8
 #define IP_VS_CA_CONN_TAB_SIZE     (1 << IP_VS_CA_CONN_TAB_BITS)
 #define IP_VS_CA_CONN_TAB_MASK     (IP_VS_CA_CONN_TAB_SIZE - 1)
 
-#define IP_VS_CA_CONN_F_HASHED	0x0040		/* hashed entry */
+#define IP_VS_CA_CONN_F_HASHED		0x0040		/* hashed entry */
 #define IP_VS_CA_CONN_F_ONE_PACKET	0x2000		/* forward only one packet */
 
-#define IP_VS_CA_ERR(msg...)						\
-	do {									\
-		printk(KERN_ERR "[ERR] IP_VS_CA: " msg);\
+#define IP_VS_CA_ERR(msg...)					\
+	do {							\
+		printk(KERN_ERR "[ERR] IP_VS_CA: " msg);	\
 	} while (0)
 
 #ifdef IP_VS_CA_DEBUG
 #define EnterFunction()						\
-	do {								\
-			printk(KERN_DEBUG				\
+	do {							\
+			printk(KERN_DEBUG			\
 			pr_fmt("Enter: %s, %s line %i\n"),	\
 				__func__, __FILE__, __LINE__);	\
 	} while (0)
 #define LeaveFunction()						\
-	do {								\
-			printk(KERN_DEBUG				\
-				pr_fmt("Leave: %s, %s line %i\n"),	\
-				__func__, __FILE__, __LINE__);		\
+	do {							\
+		printk(KERN_DEBUG				\
+			pr_fmt("Leave: %s, %s line %i\n"),	\
+			__func__, __FILE__, __LINE__);		\
 	} while (0)
-#define IP_VS_CA_DBG(msg...)							\
-	do {										\
-		if (net_ratelimit())			\
-		printk(KERN_DEBUG "[DEBUG] IP_VS_CA: " msg);\
+#define IP_VS_CA_DBG(msg...)					\
+	do {							\
+		if (net_ratelimit())				\
+		printk(KERN_DEBUG "[DEBUG] IP_VS_CA: " msg);	\
 	} while (0)
 
-#define IP_VS_CA_INFO(msg...)				\
-	do {								\
-		if (net_ratelimit())			\
+#define IP_VS_CA_INFO(msg...)					\
+	do {							\
+		if (net_ratelimit())				\
 		printk(KERN_INFO "[INFO] IP_VS_CA: " msg);	\
 	} while (0)
 #else
@@ -185,14 +188,14 @@ struct ip_vs_ca_stats_entry {
 	int entry;
 };
 
-#define IP_VS_CA_STAT_ITEM(_name, _entry) { \
-	.name = _name,		\
-	.entry = _entry,	\
+#define IP_VS_CA_STAT_ITEM(_name, _entry) {	\
+	.name = _name,				\
+	.entry = _entry,			\
 }
 
 #define IP_VS_CA_STAT_END {	\
-	NULL,		\
-	0,		\
+	NULL,			\
+	0,			\
 }
 
 struct ip_vs_ca_stat_mib {
