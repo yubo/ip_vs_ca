@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 2.6)
 
 project(ip_vs_ca C)
 
@@ -21,9 +21,13 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ip vs ca - get ip vs(fullnat) client addr
 set(CPACK_PACKAGE_VERSION "0.1.3")
 set(CPACK_PACKAGE_DESCRIPTION "get ip vs(fullnat) client addr")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${KERNEL_RELEASE}-${CPACK_PACKAGE_VERSION}.${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_RELOCATABLE false)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/scripts/postinst")
 set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/postinst")
 set(CPACK_RPM_CHANGELOG_FILE "${CMAKE_CURRENT_BINARY_DIR}/ChangeLog")
+set(CPACK_RPM_PACKAGE_LICENSE "BSD")
+set(CPACK_RPM_PACKAGE_GROUP "System Environment/Kernel")
+set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION})
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
 	"/usr"
 	"/lib"
@@ -31,7 +35,6 @@ set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
 	"/lib/modules/${KERNEL_RELEASE}"
 	"/lib/modules/${KERNEL_RELEASE}/kernel"
 	"/lib/modules/${KERNEL_RELEASE}/kernel/extra")
-set(CPACK_PACKAGE_RELOCATABLE "")
 include(CPack)
 
 add_custom_command(OUTPUT ChangeLog
