@@ -8,21 +8,30 @@
 #include <arpa/inet.h>
 #include<string.h>
 
+#define IPv4(a, b, c, d) ((uint32_t)(((a) & 0xff) << 24) |		\
+	(((b) & 0xff) << 16) |						\
+	(((c) & 0xff) << 8) |						\
+	((d) & 0xff))
+
 #define ERR_EXIT(m) \
 do { \
 	perror(m); \
 	exit(EXIT_FAILURE); \
 } while (0)
 
+#define BIND_ADDR INADDR_ANY
+//#define BIND_ADDR IPv4(0,0,0,0)
+
 int main(int argc, char *argv[])
 {
-	int sock, on;
+	int sock, port, n;
 	struct sockaddr_in servaddr, peeraddr;
 	char recvbuf[1024] = {0};
 	socklen_t peerlen;
-	int n;
+	//int on;
 
-	if (argc != 2) {
+
+	if (!(argc == 2 && (port = atoi(argv[1])))) {
 		fprintf(stderr, "Usage\n\t%s <port> \n",
 				argv[0]);
 		exit(EXIT_FAILURE);
@@ -31,15 +40,19 @@ int main(int argc, char *argv[])
 	if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
 		ERR_EXIT("socket error");
 
-	on = 1;
-	setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on) );
+	//on = 1;
+	//setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on) );
+	//
+	
+	printf("port %d\n", port);
 
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(atoi(argv[1]));
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	servaddr.sin_port = htons(port);
+	servaddr.sin_addr.s_addr = htonl(BIND_ADDR);
 
-	printf("serv %s:%d \n", inet_ntoa(servaddr.sin_addr), ntohs(servaddr.sin_port));
+	printf("serv %s:%d \n", inet_ntoa(servaddr.sin_addr),
+			ntohs(servaddr.sin_port));
 
 	if (bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
 		ERR_EXIT("bind error");
@@ -50,13 +63,16 @@ int main(int argc, char *argv[])
 		n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
 				(struct sockaddr *)&peeraddr, &peerlen);
 		if(n == -1) {
-
 			if (errno == EINTR)
 				continue;
-
 			ERR_EXIT("recvfrom error");
 		}else if(n > 0) {
-			printf("recv %d %s:%d\n", peerlen, inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+			printf("recv(%d) peer from %s:%d\n",
+					n, inet_ntoa(peeraddr.sin_addr),
+					ntohs(peeraddr.sin_port));
+			sendto(sock, recvbuf, n, 0,
+					(struct sockaddr*)&peeraddr,
+					sizeof(peeraddr));
 			fputs(recvbuf, stdout);
 		}
 	}
