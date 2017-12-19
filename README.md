@@ -57,8 +57,8 @@ modprobe ip_vs_ca
 
 可以通过修改以下文件来设置连接超时回收的时间
 
-- /proc/sys/net/ca/tcp_timeout (defualt 90s)
-- /proc/sys/net/ca/udp_timeout (defualt 180s)
+- /proc/sys/net/ca/tcp_timeout (defualt 100s)
+- /proc/sys/net/ca/udp_timeout (defualt 310s)
 - /proc/sys/net/ca/tcpopt_addr (defualt 200)
 
 查看计数器和版本信息

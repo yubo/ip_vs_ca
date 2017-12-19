@@ -23,9 +23,9 @@ enum {
 };
 
 int sysctl_ip_vs_ca_timeouts[IP_VS_CA_S_LAST + 1] = {
-	[IP_VS_CA_S_TCP]  = 90 * HZ,
-	[IP_VS_CA_S_UDP]  =  3 * 60 * HZ,
-	[IP_VS_CA_S_LAST] =  2 * HZ,
+	[IP_VS_CA_S_TCP]  = 100 * HZ,
+	[IP_VS_CA_S_UDP]  = 310 * HZ,
+	[IP_VS_CA_S_LAST] = 2 * HZ,
 };
 
 static struct ip_vs_ca_protocol *ip_vs_ca_proto_table[IP_VS_CA_PROTO_TAB_SIZE];
