@@ -20,6 +20,7 @@ set(CPACK_PACKAGE_VENDOR "yubo.org")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ip vs ca - get ip vs(fullnat) client addr")
 set(CPACK_PACKAGE_VERSION "0.1.3")
 set(CPACK_PACKAGE_DESCRIPTION "get ip vs(fullnat) client addr")
+SET(CPACK_OUTPUT_FILE_PREFIX package)
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${KERNEL_RELEASE}-${CPACK_PACKAGE_VERSION}.${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_PACKAGE_RELOCATABLE false)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/scripts/postinst")
@@ -42,5 +43,7 @@ add_custom_command(OUTPUT ChangeLog
 	COMMENT "export git log to ChangeLog")
 
 add_custom_target(PKGFILES ALL DEPENDS ChangeLog)
+
+add_custom_target(deploy COMMAND ghr --delete ${CPACK_PACKAGE_VERSION} package)
 
 add_subdirectory(src)
