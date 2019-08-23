@@ -191,9 +191,15 @@ ip_vs_ca_conn_unhash(struct ip_vs_ca_conn *cp)
 	return ret;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0) 
+static void ip_vs_ca_conn_expire(struct timer_list *t)
+{
+	struct ip_vs_ca_conn *cp = from_timer(cp, t, timer);
+#else
 static void ip_vs_ca_conn_expire(unsigned long data)
 {
 	struct ip_vs_ca_conn *cp = (struct ip_vs_ca_conn *)data;
+#endif
 
 	/*
 	 * Set proper timeout.
@@ -260,7 +266,11 @@ struct ip_vs_ca_conn *ip_vs_ca_conn_new(int af,
 
 	/* now init connection */
 	IP_VS_CA_DBG("setup_timer, %p\n", &cp->timer);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0) 
+	timer_setup(&cp->timer, ip_vs_ca_conn_expire, 0);
+#else
 	setup_timer(&cp->timer, ip_vs_ca_conn_expire, (unsigned long)cp);
+#endif
 	cp->af = af;
 	cp->protocol = pp->protocol;
 	//ip_vs_ca_addr_copy(af, &cp->saddr, saddr);

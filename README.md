@@ -4,7 +4,7 @@ get ip vs(fullnat) client addr
 
 由taobao/toa修改，可作为独立模块编译安装, 支持tcp/udp
 
-支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic) / ubuntu16.04(linux 4.4.0-64-generic) / centos7.2(linux 4.9.2-1.el7)
+支持 centos6.6(linux 2.6.32-220) / centos7.2(linux 3.10.0-237.4.5) / ubuntu14.04(linux 3.13.0-77-generic) / ubuntu16.04(linux 4.4.0-64-generic) / centos7.2(linux 4.9.2-1.el7) / ubuntu19.04 (5.0.0-25-generic)
 
 对应内核在[github.com/yubo/LVS](https://github.com/yubo/LVS/tree/lvs_v2),兼容[taobao/LVS(lvs_v2)](https://github.com/alibaba/LVS/tree/lvs_v2)
 
@@ -23,6 +23,8 @@ get ip vs(fullnat) client addr
   - [x] Support centos 7.2 rpmbuild
   - [x] Support ubuntu 14.04(trusty) dpkg
   - [x] Support ubuntu 16.04.2(xenial) dpkg
+  - [x] Support ubuntu 19.04(disco) dpkg (untested)
+  - [x] Linux (2.6.32 - 5.0.0)
 
 ## Demo
 

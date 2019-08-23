@@ -303,24 +303,25 @@ static void ip_vs_ca_syscall_cleanup(void)
 
 static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
+static unsigned int
+ip_vs_ca_in_hook(void *priv, struct sk_buff *skb,
+		      const struct nf_hook_state *state)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 static unsigned int
 ip_vs_ca_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb,
 			const struct net_device *in,
 			const struct net_device *out,
 			const void *ignore)
-{
-	return _ip_vs_ca_in_hook(skb);
-}
 #else
-static unsigned int
 ip_vs_ca_in_hook(unsigned int hooknum, struct sk_buff *skb,
 		const struct net_device *in, const struct net_device *out,
 		int (*okfn) (struct sk_buff *))
+#endif
 {
 	return _ip_vs_ca_in_hook(skb);
 }
-#endif
 
 static unsigned int _ip_vs_ca_in_hook(struct sk_buff *skb)
 {
@@ -496,7 +497,11 @@ static int __init ip_vs_ca_init(void)
 	}
 	IP_VS_CA_DBG("ip_vs_ca_conn_init done.\n");
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0) 
+	ret = nf_register_net_hooks(NULL, ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
+#else
 	ret = nf_register_hooks(ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
+#endif
 	if (ret < 0){
 		IP_VS_CA_ERR("can't register hooks.\n");
 		goto cleanup_conn;
@@ -518,7 +523,11 @@ out_err:
 
 static void __exit ip_vs_ca_exit(void)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0) 
+	nf_unregister_net_hooks(NULL, ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
+#else
 	nf_unregister_hooks(ip_vs_ca_ops, ARRAY_SIZE(ip_vs_ca_ops));
+#endif
 	ip_vs_ca_conn_cleanup();
 	ip_vs_ca_protocol_cleanup();
 	ip_vs_ca_control_cleanup();

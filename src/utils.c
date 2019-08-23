@@ -8,6 +8,10 @@
 #include <linux/syscalls.h>
 #include "ca.h"
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0) 
+#define sys_close ksys_close
+#endif
+
 unsigned long **find_sys_call_table(void) {
 
 	unsigned long ptr;
